@@ -7,6 +7,7 @@ import type { BillRow } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { GoogleIcon } from '@/components/GoogleIcon'
+import { PwaInstallPrompt } from '@/components/PwaInstallPrompt'
 
 function isOpenBill(b: BillRow): boolean {
   return b.status !== 'closed'
@@ -102,7 +103,9 @@ export function HomePage() {
   if (authLoading) return <p className="text-sm text-muted-foreground">Loading…</p>
   if (!user) {
     return (
-      <Card>
+      <div className="space-y-4">
+        <PwaInstallPrompt />
+        <Card>
         <CardHeader>
           <CardTitle>Welcome</CardTitle>
         </CardHeader>
@@ -128,6 +131,7 @@ export function HomePage() {
           </Button>
         </CardContent>
       </Card>
+      </div>
     )
   }
 
@@ -163,6 +167,8 @@ export function HomePage() {
           <Link to="/bill/new">New bill</Link>
         </Button>
       </div>
+
+      <PwaInstallPrompt />
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold tracking-tight">Open bills</h2>

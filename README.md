@@ -116,6 +116,19 @@ If `VITE_AI_API_URL` and `VITE_AI_API_KEY` are set, **Upload** / **Photo** on th
 - **Supabase JS** client (Auth, Postgres, Realtime where enabled)
 - **Vite 8** + **vite-plugin-pwa** (installable PWA)
 
+### Install on your phone (PWA)
+
+Deploy over **HTTPS** (e.g. Vercel). The service worker registers automatically.
+
+- **Android (Chrome):** open **Home** — when the browser is ready, an **Install app** card appears; tap it to add to the home screen.
+- **iPhone / iPad:** there is no install button in the browser; use **Share → Add to Home Screen** (the Home screen shows the same hint when relevant).
+
+Icons live in `public/` (`pwa-192x192.png`, `pwa-512x512.png`, maskable, Apple touch). Regenerate from `public/favicon.svg` after changing the logo:
+
+```bash
+npm run gen:pwa-assets
+```
+
 ---
 
 ## Project layout (high level)
