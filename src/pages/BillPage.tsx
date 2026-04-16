@@ -16,6 +16,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { loadDraft } from '@/services/draftStorage'
 import { APP_CURRENCY } from '@/lib/money'
 import type { BillRow } from '@/types'
+import { todayLocalIsoDate, formatIsoDateLabel } from '@/lib/date'
+import type { BillApplyMeta } from '@/features/bill/BillInput'
+import { BillShareButton } from '@/components/BillShareButton'
+import { billReceiptPublicUrl, uploadBillReceipt } from '@/services/receiptUpload'
+import { billPublicPath, isLikelyBillUuid, resolveBillRefToId } from '@/lib/billPath'
 
 function draftFromServer(bill: BillRow, items: ReturnType<typeof useBill>['items']): BillDraft {
   return {
@@ -25,11 +30,13 @@ function draftFromServer(bill: BillRow, items: ReturnType<typeof useBill>['items
       name: i.name,
       unitPriceCents: i.unit_price_cents,
       qty: i.qty,
+      shareAmong: i.share_among ?? null,
     })),
     discountType: bill.discount_type,
     discountValue: Number(bill.discount_value),
     serviceChargeCents: bill.service_charge_cents,
     taxCents: bill.tax_cents,
+    billDate: bill.bill_date ?? todayLocalIsoDate(),
   }
 }
 
@@ -69,11 +76,29 @@ export function BillPage() {
   /** When false, host sees the same split flow as guests plus Edit bill. */
   const [hostEditMode, setHostEditMode] = useState(false)
   const hostOpenedBillId = useRef<string | null>(null)
-  const [joinBusy, setJoinBusy] = useState(false)
   const [joinErr, setJoinErr] = useState<string | null>(null)
+  const [pendingReceiptFile, setPendingReceiptFile] = useState<File | null>(null)
+  const [refResolveError, setRefResolveError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (id) setCurrentBillId(id)
+    if (!id) {
+      setCurrentBillId(null)
+      setRefResolveError(null)
+      return
+    }
+    let cancelled = false
+    setRefResolveError(null)
+    void resolveBillRefToId(id).then((uuid) => {
+      if (cancelled) return
+      if (uuid) setCurrentBillId(uuid)
+      else {
+        setCurrentBillId(null)
+        setRefResolveError('Bill not found.')
+      }
+    })
+    return () => {
+      cancelled = true
+    }
   }, [id, setCurrentBillId])
 
   useEffect(() => {
@@ -81,9 +106,7 @@ export function BillPage() {
   }, [id])
 
   useEffect(() => {
-    if (id && hostOpenedBillId.current !== null && hostOpenedBillId.current !== id) {
-      hostOpenedBillId.current = null
-    }
+    hostOpenedBillId.current = null
   }, [id])
 
   const isHost = bill !== null && user !== null && bill.host_id === user.id
@@ -91,12 +114,12 @@ export function BillPage() {
     !!user && !!bill && (isHost || participants.some((p) => p.user_id === user.id))
 
   useEffect(() => {
-    if (!bill?.id || bill.id !== id || !user) return
+    if (!bill?.id || !billId || bill.id !== billId || !user) return
     if (bill.host_id !== user.id) return
     if (hostOpenedBillId.current === bill.id) return
     hostOpenedBillId.current = bill.id
     setHostEditMode(false)
-  }, [bill?.id, bill?.host_id, id, user])
+  }, [bill?.id, bill?.host_id, billId, user])
 
   useEffect(() => {
     if (!bill || !isHost) return
@@ -113,10 +136,38 @@ export function BillPage() {
     setAddItemTab('upload')
   }, [bill?.id])
 
-  const inviteUrl = useMemo(() => {
+  const billShareUrl = useMemo(() => {
     if (!bill) return ''
-    return `${window.location.origin}/join/${bill.invite_code}`
+    return `${window.location.origin}${billPublicPath(bill)}`
   }, [bill])
+
+  useEffect(() => {
+    if (!bill?.slug || !id) return
+    if (id === bill.slug) return
+    if (id === bill.id || isLikelyBillUuid(id)) {
+      navigate(`/bill/${bill.slug}`, { replace: true })
+    }
+  }, [bill?.slug, bill?.id, id, navigate])
+
+  useEffect(() => {
+    if (!user || !bill || bill.status === 'closed') return
+    if (bill.host_id === user.id) return
+    if (participants.some((p) => p.user_id === user.id)) return
+    let cancelled = false
+    void joinBill(bill.id)
+      .then(() => {
+        if (!cancelled) {
+          setJoinErr(null)
+          setMsg('You’re on the bill.')
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setJoinErr(e instanceof Error ? e.message : 'Could not join bill')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user, bill?.id, bill?.status, bill?.host_id, participants, joinBill])
 
   const save = useCallback(async () => {
     if (!editor || !bill) return
@@ -129,6 +180,7 @@ export function BillPage() {
         service_charge_cents: editor.serviceChargeCents,
         tax_cents: editor.taxCents,
         currency: APP_CURRENCY,
+        bill_date: editor.billDate ?? todayLocalIsoDate(),
       })
       await updateItems(
         editor.items.map((i) => ({
@@ -136,8 +188,13 @@ export function BillPage() {
           name: i.name,
           unit_price_cents: i.unitPriceCents,
           qty: i.qty,
+          share_among: i.shareAmong != null && i.shareAmong >= 2 ? i.shareAmong : null,
         }))
       )
+      if (pendingReceiptFile) {
+        await uploadBillReceipt(bill.id, pendingReceiptFile)
+        setPendingReceiptFile(null)
+      }
       setMsg('Saved')
       setHostEditMode(false)
       setSplitTab('assign')
@@ -146,7 +203,7 @@ export function BillPage() {
     } finally {
       setSaving(false)
     }
-  }, [editor, bill, updateBillMeta, updateItems])
+  }, [editor, bill, updateBillMeta, updateItems, pendingReceiptFile])
 
   async function handleDeleteBill() {
     if (!bill || bill.host_id !== user?.id) return
@@ -163,7 +220,13 @@ export function BillPage() {
   if (!user) {
     return <p className="text-sm text-muted-foreground">Sign in to view this bill.</p>
   }
-  if (!id || billId !== id) {
+  if (!id) {
+    return <p className="text-sm text-muted-foreground">Missing bill link.</p>
+  }
+  if (refResolveError) {
+    return <p className="text-sm text-destructive">{refResolveError}</p>
+  }
+  if (!billId) {
     return <p className="text-sm text-muted-foreground">Loading bill…</p>
   }
   if (loading && !bill) {
@@ -226,37 +289,37 @@ export function BillPage() {
         </div>
       ) : (
         <Card>
-          <CardHeader className="py-3">
+          <CardHeader className="py-3 space-y-1">
             <CardTitle className="text-base">{bill.title || 'Untitled'}</CardTitle>
+            {bill.bill_date ? (
+              <p className="text-sm text-muted-foreground">Bill date: {formatIsoDateLabel(bill.bill_date)}</p>
+            ) : null}
           </CardHeader>
         </Card>
       )}
 
-      {user && bill && !onBill && bill.status !== 'closed' ? (
-        <Card className="border-primary/30">
-          <CardHeader className="py-4">
-            <CardTitle className="text-base">Join this bill</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              You can see this bill, but you are not on the split yet. Join to pick your order and see your total.
+      {bill.receipt_image_path ? (
+        <div className="overflow-hidden rounded-lg border border-border bg-muted/20">
+          <img
+            src={billReceiptPublicUrl(bill.receipt_image_path)}
+            alt="Receipt"
+            className="mx-auto max-h-[min(70vh,560px)] w-full object-contain"
+          />
+        </div>
+      ) : null}
+
+      {joinErr ? <p className="text-sm text-destructive">{joinErr}</p> : null}
+
+      {isHost && bill.status !== 'closed' ? (
+        <Card>
+          <CardHeader className="py-3">
+            <CardTitle className="text-base">Share this bill</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Anyone with the link can open the bill; sign-in is still required to pick items and see totals.
             </p>
           </CardHeader>
-          <CardContent className="space-y-2 pt-0">
-            {joinErr ? <p className="text-sm text-destructive">{joinErr}</p> : null}
-            <Button
-              type="button"
-              className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-h-10"
-              disabled={joinBusy}
-              onClick={() => {
-                setJoinErr(null)
-                setJoinBusy(true)
-                void joinBill(bill.invite_code)
-                  .then(() => setMsg('You’re on the bill — add your order below.'))
-                  .catch((e) => setJoinErr(e instanceof Error ? e.message : 'Join failed'))
-                  .finally(() => setJoinBusy(false))
-              }}
-            >
-              {joinBusy ? 'Joining…' : 'Join bill'}
-            </Button>
+          <CardContent className="pt-0">
+            <BillShareButton billUrl={billShareUrl} title={bill.title ?? 'Bill'} />
           </CardContent>
         </Card>
       ) : null}
@@ -272,36 +335,19 @@ export function BillPage() {
             Edit bill
           </Button>
           <p className="text-sm text-muted-foreground">
-            Change line items, invite link, or close the bill. Otherwise use{' '}
+            Change line items or close the bill. Otherwise use{' '}
             <span className="font-medium text-foreground">My order</span> below like everyone else.
           </p>
         </div>
       ) : null}
 
-      {hostFullUi ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Invite</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p className="font-mono break-all">{inviteUrl}</p>
-            <Button
-              type="button"
-              variant="secondary"
-              className="min-h-11 w-full touch-manipulation sm:w-auto sm:min-h-9"
-              onClick={() => void navigator.clipboard.writeText(inviteUrl)}
-            >
-              Copy link
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
+      {!hostFullUi ? (
         <p className="text-sm text-muted-foreground">
           {isHost
             ? 'Use My order to set your units, then My total to see what you owe. Use Edit bill to change the receipt or settings.'
             : 'Only the host can change line items and charges. Use My order to set your share, then My total for your amount.'}
         </p>
-      )}
+      ) : null}
 
       {hostFullUi ? (
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -344,9 +390,11 @@ export function BillPage() {
             <BillInput
               tab={addItemTab}
               onTabChange={setAddItemTab}
-              onApply={(d, source) => {
+              onApply={(d, source, meta?: BillApplyMeta) => {
                 setEditor(d)
                 setDraftSource(source)
+                if (meta?.receiptFile) setPendingReceiptFile(meta.receiptFile)
+                else if (source === 'manual') setPendingReceiptFile(null)
                 const name = d.billTitle?.trim()
                 if (name && bill && user && bill.host_id === user.id && isPlaceholderBillTitle(bill.title)) {
                   void updateBillMeta({ title: name })
@@ -437,11 +485,15 @@ export function BillPage() {
           {onBill ? (
             <AssignmentsPanel onOrderConfirmed={() => setSplitTab('results')} />
           ) : (
-            <p className="text-sm text-muted-foreground">Join the bill above to add your order.</p>
+            <p className="text-sm text-muted-foreground">Joining the bill… you can pick your order in a moment.</p>
           )}
         </TabsContent>
         <TabsContent value="results">
-          {onBill ? <BillResults /> : <p className="text-sm text-muted-foreground">Join the bill above to see your total.</p>}
+          {onBill ? (
+            <BillResults />
+          ) : (
+            <p className="text-sm text-muted-foreground">Joining the bill… your total will load shortly.</p>
+          )}
         </TabsContent>
       </Tabs>
 

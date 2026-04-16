@@ -128,6 +128,39 @@ describe('calculateBill', () => {
     expect(r.byUser[bob].preDiscountSubtotalCents).toBe(200)
   })
 
+  it('splits shareAmong line by claimed slots when all slots are assigned', () => {
+    const r = calculateBill({
+      items: [{ id: 'pizza', name: 'Pizza', unitPriceCents: 300, qty: 1, shareAmong: 3 }],
+      participantIds: [alice, bob],
+      assignments: [
+        { billItemId: 'pizza', userId: alice, mode: 'shared_equal', claimedQty: 1 },
+        { billItemId: 'pizza', userId: bob, mode: 'shared_equal', claimedQty: 2 },
+      ],
+      billDiscount: { kind: 'amount', value: 0 },
+      serviceChargeCents: 0,
+      taxCents: 0,
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.byUser[alice].preDiscountSubtotalCents).toBe(100)
+    expect(r.byUser[bob].preDiscountSubtotalCents).toBe(200)
+  })
+
+  it('returns error when shareAmong slots are not fully claimed', () => {
+    const r = calculateBill({
+      items: [{ id: 'pizza', unitPriceCents: 300, qty: 1, shareAmong: 3 }],
+      participantIds: [alice, bob],
+      assignments: [
+        { billItemId: 'pizza', userId: alice, mode: 'shared_equal', claimedQty: 1 },
+        { billItemId: 'pizza', userId: bob, mode: 'shared_equal', claimedQty: 1 },
+      ],
+      billDiscount: { kind: 'amount', value: 0 },
+      serviceChargeCents: 0,
+      taxCents: 0,
+    })
+    expect(r.ok).toBe(false)
+  })
+
   it('allocates tax equally when post-discount totals are all zero', () => {
     const r = calculateBill({
       items: [{ id: 'x', unitPriceCents: 100, qty: 1 }],

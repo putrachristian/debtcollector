@@ -1,13 +1,13 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Receipt, Wallet } from 'lucide-react'
+import { LayoutList, Plus, Wallet } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-function tabClass(active: boolean) {
+function mobileTabClass(active: boolean) {
   return cn(
-    'flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1 text-[11px] font-medium transition-colors touch-manipulation',
-    active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+    'flex min-h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-1.5 text-[10px] font-medium transition-colors touch-manipulation [-webkit-tap-highlight-color:transparent]',
+    active ? 'bg-primary/12 text-primary' : 'text-muted-foreground active:bg-muted/60'
   )
 }
 
@@ -34,8 +34,7 @@ function accountLabel(
 export function AppLayout() {
   const { user, profile, signOut } = useAuth()
   const { pathname } = useLocation()
-  const hideTabBar =
-    (pathname.startsWith('/bill/') && pathname !== '/bill/new') || pathname.startsWith('/join/')
+  const hideTabBar = pathname.startsWith('/bill/') && pathname !== '/bill/new'
   const isAuthRoute = pathname === '/auth'
 
   return (
@@ -50,7 +49,10 @@ export function AppLayout() {
           </Link>
           <nav className="hidden min-w-0 flex-1 items-center justify-end gap-2 md:flex">
             <Button variant="ghost" size="sm" asChild>
-              <Link to="/">Bills</Link>
+              <Link to="/">List bill</Link>
+            </Button>
+            <Button variant="default" size="sm" asChild>
+              <Link to="/bill/new">New bill</Link>
             </Button>
             <Button variant="ghost" size="sm" asChild>
               <Link to="/debts">My debt</Link>
@@ -92,7 +94,8 @@ export function AppLayout() {
       <main
         className={cn(
           'mx-auto w-full max-w-4xl flex-1 px-4 pb-6 pt-4',
-          !hideTabBar && 'pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-6'
+          !hideTabBar &&
+            'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-6'
         )}
       >
         <Outlet />
@@ -100,18 +103,31 @@ export function AppLayout() {
 
       {!hideTabBar ? (
         <nav
-          className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-lg md:hidden"
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-50 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] md:hidden"
           aria-label="Main"
         >
-          <div className="mx-auto flex max-w-lg items-stretch justify-around">
-            <NavLink to="/" end className={({ isActive }) => tabClass(isActive)}>
-              <Receipt className="size-5 shrink-0" aria-hidden />
-              Bills
-            </NavLink>
-            <NavLink to="/debts" className={({ isActive }) => tabClass(isActive)}>
-              <Wallet className="size-5 shrink-0" aria-hidden />
-              My debt
-            </NavLink>
+          <div className="pointer-events-auto mx-auto flex max-w-md justify-center px-4">
+            <div
+              className={cn(
+                'flex w-full max-w-sm items-end gap-1 rounded-[1.75rem] border border-border/70 bg-card/90 px-2 pb-2 pt-1 shadow-[0_-4px_24px_-4px_rgba(0,0,0,0.12)] backdrop-blur-xl dark:shadow-[0_-4px_28px_-6px_rgba(0,0,0,0.45)]'
+              )}
+            >
+              <NavLink to="/" end className={({ isActive }) => mobileTabClass(isActive)}>
+                <LayoutList className="size-[22px] shrink-0 stroke-[1.75]" aria-hidden />
+                <span>List bill</span>
+              </NavLink>
+              <Link
+                to="/bill/new"
+                className="-mt-5 mb-0.5 flex size-[3.25rem] shrink-0 items-center justify-center self-center rounded-2xl bg-primary text-primary-foreground shadow-md ring-[5px] ring-background transition-transform active:scale-95 dark:ring-background"
+                aria-label="New bill"
+              >
+                <Plus className="size-7 shrink-0 stroke-[2.5]" aria-hidden />
+              </Link>
+              <NavLink to="/debts" className={({ isActive }) => mobileTabClass(isActive)}>
+                <Wallet className="size-[22px] shrink-0 stroke-[1.75]" aria-hidden />
+                <span>My debt</span>
+              </NavLink>
+            </div>
           </div>
         </nav>
       ) : null}

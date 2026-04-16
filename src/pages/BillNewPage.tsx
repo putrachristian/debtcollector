@@ -10,6 +10,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { APP_CURRENCY } from '@/lib/money'
+import { todayLocalIsoDate } from '@/lib/date'
+import type { BillApplyMeta } from '@/features/bill/BillInput'
+import { uploadBillReceipt } from '@/services/receiptUpload'
 
 export function BillNewPage() {
   const navigate = useNavigate()
@@ -19,6 +22,7 @@ export function BillNewPage() {
   const [inputTab, setInputTab] = useState<BillInputTab>('upload')
   const [draft, setDraft] = useState<BillDraft | null>(null)
   const [draftSource, setDraftSource] = useState<'image' | 'manual' | null>(null)
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -38,8 +42,7 @@ export function BillNewPage() {
     }
     setBusy(true)
     try {
-      const id = await createBill(title.trim() || 'New bill')
-      // Pass `id`: context `billId` can still be null here (stale closure on /bill/new where billId is cleared).
+      const { id, publicPath } = await createBill(title.trim() || 'New bill')
       await updateBillMeta(
         {
           currency: APP_CURRENCY,
@@ -47,6 +50,7 @@ export function BillNewPage() {
           discount_value: draft.discountValue,
           service_charge_cents: draft.serviceChargeCents,
           tax_cents: draft.taxCents,
+          bill_date: draft.billDate ?? todayLocalIsoDate(),
         },
         id
       )
@@ -56,10 +60,18 @@ export function BillNewPage() {
           name: i.name,
           unit_price_cents: i.unitPriceCents,
           qty: i.qty,
+          share_among: i.shareAmong != null && i.shareAmong >= 2 ? i.shareAmong : null,
         })),
         id
       )
-      navigate(`/bill/${id}`, { replace: true })
+      if (receiptFile) {
+        try {
+          await uploadBillReceipt(id, receiptFile)
+        } catch (e) {
+          setErr(e instanceof Error ? e.message : 'Bill created but receipt upload failed')
+        }
+      }
+      navigate(publicPath, { replace: true })
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to create bill')
     } finally {
@@ -102,9 +114,10 @@ export function BillNewPage() {
           <BillInput
             tab={inputTab}
             onTabChange={setInputTab}
-            onApply={(d, source) => {
+            onApply={(d, source, meta?: BillApplyMeta) => {
               setDraft(d)
               setDraftSource(source)
+              setReceiptFile(meta?.receiptFile ?? null)
               const n = d.billTitle?.trim()
               if (n) setTitle((prev) => (prev.trim() === '' ? n : prev))
             }}

@@ -17,6 +17,15 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x)
 }
 
+function parseOptionalIsoDate(v: unknown): string | null {
+  if (v == null) return null
+  if (typeof v !== 'string') return null
+  const t = v.trim()
+  if (!t) return null
+  const m = t.match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1]! : null
+}
+
 function inferCurrency(raw: Record<string, unknown>): string {
   if (typeof raw.currency === 'string' && raw.currency.trim().length === 3) {
     return raw.currency.trim().toUpperCase()
@@ -42,21 +51,41 @@ function stripMarkdownJsonFence(s: string): string {
   return t.trim()
 }
 
+/**
+ * Models sometimes inject stray tokens between `}` and `{` (e.g. `}\\n   inhaler{`) so the payload
+ * is not valid JSON. Turn that into a proper `},{` continuation.
+ */
+function repairStrayTokensBetweenBraces(s: string): string {
+  let t = s
+  for (let i = 0; i < 24; i++) {
+    const next = t.replace(/\}\s+[A-Za-z][A-Za-z0-9_]*\s*\{/g, '},{')
+    if (next === t) break
+    t = next
+  }
+  return t
+}
+
 function parseJsonFromAiString(s: string): unknown {
   const trimmed = s.trim()
-  try {
-    return JSON.parse(trimmed) as unknown
-  } catch {
+  const unfenced = stripMarkdownJsonFence(trimmed)
+  const attempts = [trimmed, unfenced, repairStrayTokensBetweenBraces(unfenced), repairStrayTokensBetweenBraces(trimmed)]
+  for (const blob of attempts) {
     try {
-      return JSON.parse(stripMarkdownJsonFence(trimmed)) as unknown
+      return JSON.parse(blob) as unknown
     } catch {
-      const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]) as unknown
-      }
-      throw new Error('AI result is not valid JSON')
+      /* next */
     }
   }
+  const jsonMatch = unfenced.match(/\{[\s\S]*\}/) ?? trimmed.match(/\{[\s\S]*\}/)
+  if (jsonMatch) {
+    const patched = repairStrayTokensBetweenBraces(jsonMatch[0])
+    try {
+      return JSON.parse(patched) as unknown
+    } catch {
+      /* fall through */
+    }
+  }
+  throw new Error('AI result is not valid JSON')
 }
 
 /** If `data` is a JSON string (some gateways), parse it. */
@@ -75,6 +104,16 @@ function maybeParseStringifiedRecord(x: unknown): unknown {
   }
 }
 
+function pushCandidate(out: unknown[], v: unknown) {
+  if (v === undefined || v === null) return
+  out.push(v)
+  if (Array.isArray(v)) {
+    for (const el of v) {
+      if (el !== undefined && el !== null) out.push(el)
+    }
+  }
+}
+
 /** Collect likely workflow output blobs (strings or objects) from a `data` node. */
 function receiptCandidatesFromWorkflowData(data: unknown): unknown[] {
   const d = maybeParseStringifiedRecord(data)
@@ -89,15 +128,25 @@ function receiptCandidatesFromWorkflowData(data: unknown): unknown[] {
   const outs = d.outputs ?? d.output
   if (isRecord(outs)) {
     for (const k of ['result', 'output', 'text', 'content', 'message', 'json', 'data', 'body']) {
-      const v = outs[k]
-      if (v !== undefined && v !== null) out.push(v)
+      pushCandidate(out, outs[k])
     }
     out.push(outs)
   }
 
   for (const k of ['result', 'output', 'text', 'content', 'message', 'json', 'body', 'response']) {
-    const v = d[k]
-    if (v !== undefined && v !== null) out.push(v)
+    pushCandidate(out, d[k])
+  }
+
+  /** Some workflow engines put LLM / tool JSON here instead of only in `outputs.result`. */
+  const executed = d.executed_nodes
+  if (Array.isArray(executed)) {
+    for (const node of executed) {
+      if (!isRecord(node)) continue
+      for (const k of ['output', 'outputs', 'result', 'data', 'response', 'content', 'text']) {
+        pushCandidate(out, node[k])
+      }
+      out.push(node)
+    }
   }
 
   return out
@@ -157,6 +206,13 @@ function envelopeDebugKeys(raw: Record<string, unknown>): string {
     const outs = d.outputs ?? d.output
     if (isRecord(outs)) {
       bits.push(`outputs: ${Object.keys(outs).join(', ')}`)
+      const res = outs.result
+      if (res !== undefined && res !== null) {
+        const t = Array.isArray(res) ? 'array' : typeof res
+        bits.push(`outputs.result=${t}`)
+        if (typeof res === 'string') bits.push(`result_len=${res.length}`)
+        if (isRecord(res) && !Array.isArray(res)) bits.push(`result_keys=${Object.keys(res).slice(0, 12).join(',')}`)
+      }
     }
     const st = d.status
     if (typeof st === 'string') bits.push(`status=${st}`)
@@ -258,6 +314,7 @@ function normalizeParsedReceipt(raw: Record<string, unknown>): ParsedReceipt {
   const confidence =
     typeof raw.confidence === 'number' && Number.isFinite(raw.confidence) ? raw.confidence : undefined
   const warnings = Array.isArray(raw.warnings) ? raw.warnings : undefined
+  const bill_date = parseOptionalIsoDate(raw.date ?? raw.bill_date ?? raw.receipt_date)
 
   return {
     currency,
@@ -268,6 +325,7 @@ function normalizeParsedReceipt(raw: Record<string, unknown>): ParsedReceipt {
     discount_value,
     service_charge,
     tax,
+    bill_date,
     confidence,
     warnings,
   }
@@ -278,7 +336,21 @@ function coerceParsedReceipt(raw: unknown): ParsedReceipt {
   if (raw === null || raw === undefined) {
     throw new Error('AI returned empty body')
   }
+  if (Array.isArray(raw)) {
+    for (const el of raw) {
+      try {
+        return coerceParsedReceipt(el)
+      } catch {
+        /* try next element */
+      }
+    }
+    throw new Error('AI returned an array but no element contained a receipt with items[]')
+  }
   if (typeof raw === 'string') {
+    const t = raw.trim()
+    if (t.length === 0) {
+      throw new Error('AI returned an empty result string')
+    }
     try {
       return coerceParsedReceipt(parseJsonFromAiString(raw))
     } catch {
@@ -392,5 +464,6 @@ export function parsedReceiptToCentsModel(p: ParsedReceipt) {
     discountValue: discountStored,
     serviceChargeCents,
     taxCents,
+    billDate: p.bill_date ?? null,
   }
 }

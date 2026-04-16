@@ -6,7 +6,6 @@ import { AppLayout } from '@/components/AppLayout'
 import { HomePage } from '@/pages/HomePage'
 import { BillPage } from '@/pages/BillPage'
 import { BillNewPage } from '@/pages/BillNewPage'
-import { JoinPage } from '@/pages/JoinPage'
 import { DebtPage } from '@/pages/DebtPage'
 import { AuthPage } from '@/pages/AuthPage'
 
@@ -21,7 +20,6 @@ export default function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/bill/new" element={<BillNewPage />} />
                 <Route path="/bill/:id" element={<BillPage />} />
-                <Route path="/join/:code" element={<JoinPage />} />
                 <Route path="/debts" element={<DebtPage />} />
                 <Route path="/auth" element={<AuthPage />} />
               </Route>

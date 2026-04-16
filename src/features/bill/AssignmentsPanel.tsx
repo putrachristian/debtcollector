@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { MoreVertical } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useBill } from '@/context/BillContext'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -6,6 +7,19 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { APP_CURRENCY, formatCents } from '@/lib/money'
+
+function mapShareAmongError(raw: string): string {
+  const m = raw.toLowerCase()
+  if (m.includes('cannot_clear') || m.includes('clear_share')) {
+    return "Remove everyone's picks on this line before clearing the shared split."
+  }
+  if (m.includes('share_too_low') || m.includes('claims')) {
+    return 'That number is lower than slots already claimed on this line.'
+  }
+  if (m.includes('bill_closed')) return 'This bill is closed.'
+  if (m.includes('forbidden')) return 'You must be on this bill to change this.'
+  return raw
+}
 
 function mapsEqual(a: Map<string, number>, b: Map<string, number>): boolean {
   if (a.size !== b.size) return false
@@ -63,13 +77,17 @@ type Props = {
  */
 export function AssignmentsPanel({ onOrderConfirmed }: Props) {
   const { user } = useAuth()
-  const { bill, items, participants, assignments, applyMyLineQty, participantLabel } = useBill()
+  const { bill, items, participants, assignments, applyMyLineQty, setItemShareAmong, participantLabel } = useBill()
   const isHost = bill !== null && user !== null && bill.host_id === user.id
   const cur = bill?.currency ?? APP_CURRENCY
+  const billOpen = bill !== null && bill.status !== 'closed'
   const [localUnits, setLocalUnits] = useState<Map<string, number>>(() => new Map())
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [shareModal, setShareModal] = useState<{ lineId: string; n: string } | null>(null)
+  const [shareBusy, setShareBusy] = useState(false)
 
   const serverMyUnits = useMemo(() => {
     const m = new Map<string, number>()
@@ -170,9 +188,9 @@ export function AssignmentsPanel({ onOrderConfirmed }: Props) {
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
-        Tick lines you shared, set <span className="font-medium text-foreground">how many units</span> are yours when
-        quantity is more than 1, then scroll down and tap <span className="font-medium text-foreground">Confirm my order</span>.
-        For a single dish split by several people, quantity stays 1 and the price is split evenly.
+        Tick <span className="font-medium text-foreground">I had this</span>, set units or slots when needed, and use the
+        line <span className="font-medium text-foreground">⋯</span> menu for a <span className="font-medium text-foreground">shared dish</span> (split the line total across several people). Then tap{' '}
+        <span className="font-medium text-foreground">Confirm my order</span> at the bottom.
       </p>
 
       {hasPendingChanges ? (
@@ -183,52 +201,121 @@ export function AssignmentsPanel({ onOrderConfirmed }: Props) {
       {items.map((it) => {
         const rows = byItem.get(it.id) ?? []
         const lineQty = Math.max(1, Math.trunc(it.qty))
+        const shareN = it.share_among != null && it.share_among >= 2 ? Math.trunc(it.share_among) : null
+        const slotCap = shareN ?? lineQty
         const myUnits = localUnits.get(it.id) ?? 0
         const checked = myUnits > 0
         const picks = picksOnLine(rows, it.id, user.id, localUnits, dirty, participantLabel)
         const lineUnsaved =
           localUnits.has(it.id) && (localUnits.get(it.id) ?? 0) !== (serverMyUnits.get(it.id) ?? 0)
+        const slotsClaimed = picks.reduce((s, p) => s + p.qty, 0)
 
         return (
           <div key={it.id} className="rounded-lg border border-border bg-card/40 p-4 space-y-3">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
                 <p className="font-medium">{it.name}</p>
                 <p className="text-xs text-muted-foreground tabular-nums">
-                  Line {formatCents(it.unit_price_cents * it.qty, cur)} · Qty {lineQty}
+                  Line {formatCents(it.unit_price_cents * it.qty, cur)}
+                  {shareN != null ? (
+                    <>
+                      {' '}
+                      · Shared among {shareN} · {slotsClaimed}/{shareN} slots claimed
+                    </>
+                  ) : (
+                    <> · Qty {lineQty}</>
+                  )}
                 </p>
+              </div>
+              <div className="relative shrink-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 text-muted-foreground"
+                  disabled={!billOpen || shareBusy || saving}
+                  aria-label="Line options"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMenuFor((v) => (v === it.id ? null : it.id))
+                  }}
+                >
+                  <MoreVertical className="size-4" />
+                </Button>
+                {menuFor === it.id ? (
+                  <div
+                    className="absolute right-0 top-full z-20 mt-1 min-w-[11rem] rounded-md border border-border bg-card py-1 text-sm shadow-md"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      className="block w-full px-3 py-2 text-left hover:bg-muted/60"
+                      onClick={() => {
+                        setMenuFor(null)
+                        setShareModal({
+                          lineId: it.id,
+                          n: String(shareN != null ? shareN : 2),
+                        })
+                      }}
+                    >
+                      Shared dish…
+                    </button>
+                    {shareN != null ? (
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-destructive hover:bg-muted/60 disabled:opacity-50"
+                        disabled={slotsClaimed > 0}
+                        title={slotsClaimed > 0 ? 'Remove all picks on this line first' : undefined}
+                        onClick={() => {
+                          setMenuFor(null)
+                          setShareBusy(true)
+                          setErr(null)
+                          void setItemShareAmong(it.id, null)
+                            .catch((e) =>
+                              setErr(mapShareAmongError(e instanceof Error ? e.message : 'Could not clear shared dish'))
+                            )
+                            .finally(() => setShareBusy(false))
+                        }}
+                      >
+                        Clear shared split
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
             <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-border bg-background/60 px-3 py-2 touch-manipulation">
               <Checkbox
                 checked={checked}
-                disabled={saving}
+                disabled={saving || !billOpen}
                 onCheckedChange={(c) => {
                   const on = c === true
                   if (on) {
-                    setUnitsForItem(it.id, Math.min(1, lineQty), lineQty)
+                    setUnitsForItem(it.id, Math.min(1, slotCap), slotCap)
                   } else {
-                    setUnitsForItem(it.id, 0, lineQty)
+                    setUnitsForItem(it.id, 0, slotCap)
                   }
                 }}
               />
               <span className="text-sm font-medium">I had this</span>
             </label>
-            {lineQty > 1 && checked ? (
+            {(lineQty > 1 || shareN != null) && checked ? (
               <div className="flex flex-wrap items-end gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Units for you (max {lineQty})</Label>
+                  <Label className="text-xs text-muted-foreground">
+                    {shareN != null ? `Slots for you (max ${slotCap})` : `Units for you (max ${lineQty})`}
+                  </Label>
                   <Input
                     type="number"
                     inputMode="numeric"
                     min={1}
-                    max={lineQty}
+                    max={slotCap}
                     className="h-11 w-24 tabular-nums"
                     value={myUnits}
                     disabled={saving}
                     onChange={(e) => {
                       const v = Math.round(Number(e.target.value) || 0)
-                      setUnitsForItem(it.id, v, lineQty)
+                      setUnitsForItem(it.id, v, slotCap)
                     }}
                   />
                 </div>
@@ -246,10 +333,10 @@ export function AssignmentsPanel({ onOrderConfirmed }: Props) {
                     return (
                       <li key={userId}>
                         <span className="font-medium text-foreground/90">{name}</span>
-                        {lineQty > 1 ? (
+                        {lineQty > 1 || shareN != null ? (
                           <span>
                             {' '}
-                            — {qty} {qty === 1 ? 'unit' : 'units'}
+                            — {qty} {qty === 1 ? 'slot' : 'slots'}
                             {lineUnsaved && isYou ? (
                               <span className="text-amber-600 dark:text-amber-500"> (not saved)</span>
                             ) : null}
@@ -280,6 +367,64 @@ export function AssignmentsPanel({ onOrderConfirmed }: Props) {
           <span className="text-xs text-amber-600 dark:text-amber-500 sm:self-center">Unsaved picks</span>
         ) : null}
       </div>
+
+      {shareModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
+          role="presentation"
+          onClick={() => !shareBusy && setShareModal(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-border bg-card p-4 shadow-lg"
+            role="dialog"
+            aria-labelledby="assign-share-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="assign-share-title" className="text-base font-semibold">
+              Shared dish
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              How many people share this line total (e.g. pizza for 3)? Everyone can then claim how many slots they
+              had.
+            </p>
+            <div className="mt-3 space-y-1">
+              <Label htmlFor="assign-share-n">People</Label>
+              <Input
+                id="assign-share-n"
+                type="number"
+                min={2}
+                className="min-h-11"
+                disabled={shareBusy}
+                value={shareModal.n}
+                onChange={(e) => setShareModal((s) => (s ? { ...s, n: e.target.value } : s))}
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={shareBusy}
+                onClick={() => {
+                  const v = Math.round(Number(shareModal.n))
+                  if (!Number.isFinite(v) || v < 2) return
+                  setShareBusy(true)
+                  setErr(null)
+                  void setItemShareAmong(shareModal.lineId, v)
+                    .then(() => setShareModal(null))
+                    .catch((e) =>
+                      setErr(mapShareAmongError(e instanceof Error ? e.message : 'Could not save shared dish'))
+                    )
+                    .finally(() => setShareBusy(false))
+                }}
+              >
+                {shareBusy ? 'Saving…' : 'Save'}
+              </Button>
+              <Button type="button" variant="outline" disabled={shareBusy} onClick={() => setShareModal(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

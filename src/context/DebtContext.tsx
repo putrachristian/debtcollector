@@ -11,9 +11,11 @@ import { supabase } from '@/services/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { calculateUserSharePartial } from '@/lib/calculateBill'
 import type { BillRow, BillItemRow, ItemAssignmentRow, ParticipantRow, PaymentRow } from '@/types'
+import { billPublicPath } from '@/lib/billPath'
 
 export type OutstandingDebt = {
   billId: string
+  billPath: string
   title: string | null
   hostId: string
   hostDisplayName: string
@@ -173,6 +175,7 @@ export function DebtProvider({ children }: { children: ReactNode }) {
           name: it.name,
           unitPriceCents: it.unit_price_cents,
           qty: it.qty,
+          shareAmong: it.share_among ?? null,
         })),
         participantIds,
         assignments: localAssignments.map((a) => ({
@@ -198,6 +201,7 @@ export function DebtProvider({ children }: { children: ReactNode }) {
 
       out.push({
         billId: b.id,
+        billPath: billPublicPath(b as BillRow),
         title: b.title,
         hostId: b.host_id,
         hostDisplayName: hostNames[b.host_id] ?? `${b.host_id.slice(0, 8)}…`,

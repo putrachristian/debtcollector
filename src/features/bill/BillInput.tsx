@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { parseReceipt, parsedReceiptToCentsModel } from '@/services/ai'
 import { APP_CURRENCY } from '@/lib/money'
+import { todayLocalIsoDate } from '@/lib/date'
 import type { DiscountType } from '@/types'
 
 export type DraftLine = {
@@ -10,6 +11,8 @@ export type DraftLine = {
   name: string
   unitPriceCents: number
   qty: number
+  /** Split line total across N people (each claims slots). */
+  shareAmong?: number | null
 }
 
 export type BillDraft = {
@@ -22,6 +25,8 @@ export type BillDraft = {
   taxCents: number
   /** From receipt AI (`merchant`); used to pre-fill bill title when empty. */
   billTitle?: string
+  /** YYYY-MM-DD; AI or manual default (today). */
+  billDate?: string
 }
 
 export function defaultBillDraft(): BillDraft {
@@ -39,13 +44,19 @@ export function defaultBillDraft(): BillDraft {
     discountValue: 0,
     serviceChargeCents: 0,
     taxCents: 0,
+    billDate: todayLocalIsoDate(),
   }
 }
 
 export type BillInputTab = 'upload' | 'camera' | 'manual'
 
+export type BillApplyMeta = {
+  /** Present when draft came from upload/camera — upload after bill is created. */
+  receiptFile?: File | null
+}
+
 type Props = {
-  onApply: (draft: BillDraft, source: 'image' | 'manual') => void
+  onApply: (draft: BillDraft, source: 'image' | 'manual', meta?: BillApplyMeta) => void
   tab: BillInputTab
   onTabChange: (tab: BillInputTab) => void
 }
@@ -64,6 +75,7 @@ export function BillInput({ onApply, tab, onTabChange }: Props) {
       const raw = await parseReceipt(file)
       const m = parsedReceiptToCentsModel(raw)
       const merchantName = typeof raw.merchant === 'string' ? raw.merchant.trim() : ''
+      const billDateFromAi = m.billDate?.trim() || undefined
       onApply(
         {
           currency: APP_CURRENCY,
@@ -78,8 +90,10 @@ export function BillInput({ onApply, tab, onTabChange }: Props) {
           serviceChargeCents: m.serviceChargeCents,
           taxCents: m.taxCents,
           ...(merchantName ? { billTitle: merchantName } : {}),
+          ...(billDateFromAi ? { billDate: billDateFromAi } : { billDate: todayLocalIsoDate() }),
         },
-        'image'
+        'image',
+        { receiptFile: file }
       )
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Parse failed')
@@ -89,7 +103,7 @@ export function BillInput({ onApply, tab, onTabChange }: Props) {
   }
 
   function startManual() {
-    onApply(defaultBillDraft(), 'manual')
+    onApply(defaultBillDraft(), 'manual', {})
   }
 
   return (

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { APP_CURRENCY, formatCents, formatMajorForInput, majorToMinor } from '@/lib/money'
+import { todayLocalIsoDate } from '@/lib/date'
 
 type Props = {
   draft: BillDraft
@@ -76,6 +77,19 @@ export function ItemsEditor({ draft, onChange, onSave, disabled, saveLabel = 'Sa
 
   return (
     <div className="space-y-4">
+      <div className="space-y-1">
+        <Label htmlFor="bill-date">Bill date</Label>
+        <Input
+          id="bill-date"
+          type="date"
+          className="min-h-11 max-w-full text-base md:min-h-10 md:text-sm sm:max-w-xs"
+          disabled={disabled}
+          value={draft.billDate ?? todayLocalIsoDate()}
+          onChange={(e) => onChange({ ...draft, billDate: e.target.value })}
+        />
+        <p className="text-xs text-muted-foreground">Used on the bill detail; receipt scans pre-fill when the AI returns a date.</p>
+      </div>
+
       <div className="space-y-3">
         {draft.items.map((it) => (
           <div key={it.id} className="rounded-lg border border-border bg-card/40 p-4 space-y-3">
@@ -260,6 +274,7 @@ export function ItemsEditor({ draft, onChange, onSave, disabled, saveLabel = 'Sa
       >
         {saveLabel}
       </Button>
+
     </div>
   )
 }

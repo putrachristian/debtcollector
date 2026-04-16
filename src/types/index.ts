@@ -21,7 +21,8 @@ export interface BillRow {
   id: string
   host_id: string
   title: string | null
-  invite_code: string
+  /** URL segment for `/bill/:slug` (lowercase, unique). */
+  slug?: string | null
   status: BillStatus
   discount_type: DiscountType
   discount_value: number
@@ -31,6 +32,10 @@ export interface BillRow {
   /** ISO 4217; app uses IDR only. */
   currency: string
   created_at: string
+  /** Storage object path in bucket `bill-receipts` (e.g. `{billId}/receipt.jpg`). */
+  receipt_image_path?: string | null
+  /** Calendar date for the meal / receipt (YYYY-MM-DD). */
+  bill_date?: string | null
 }
 
 export interface BillItemRow {
@@ -40,6 +45,8 @@ export interface BillItemRow {
   unit_price_cents: number
   qty: number
   line_subtotal_cents: number
+  /** When set (≥2), line total is split across this many people (claimed_qty = slots per user). */
+  share_among?: number | null
 }
 
 export interface ParticipantRow {
@@ -87,6 +94,8 @@ export interface ParsedReceipt {
   discount_value: number
   service_charge: number
   tax: number
+  /** Receipt date from AI (YYYY-MM-DD). */
+  bill_date?: string | null
   confidence?: number
   warnings?: unknown[]
 }
@@ -97,7 +106,7 @@ export interface DraftBillPayload {
   title: string
   /** ISO 4217; omit for legacy drafts (treated as USD). */
   currency?: string
-  items: { id: string; name: string; unitPriceCents: number; qty: number }[]
+  items: { id: string; name: string; unitPriceCents: number; qty: number; shareAmong?: number | null }[]
   discountType: DiscountType
   discountValue: number
   serviceChargeCents: number

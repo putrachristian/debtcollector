@@ -27,6 +27,7 @@ type LocalItem = {
   unit_price_cents: number
   qty: number
   line_subtotal_cents: number
+  share_among: number | null
 }
 
 type BillContextValue = {
@@ -39,9 +40,9 @@ type BillContextValue = {
   loading: boolean
   error: string | null
   setCurrentBillId: (id: string | null) => void
-  createBill: (title?: string) => Promise<string>
+  createBill: (title?: string) => Promise<{ id: string; publicPath: string }>
   deleteBill: () => Promise<void>
-  joinBill: (inviteCode: string) => Promise<string>
+  joinBill: (billId: string) => Promise<string>
   refresh: (overrideBillId?: string) => Promise<void>
   updateBillMeta: (
     patch: Partial<
@@ -54,6 +55,8 @@ type BillContextValue = {
         | 'service_charge_cents'
         | 'tax_cents'
         | 'currency'
+        | 'bill_date'
+        | 'receipt_image_path'
       >
     >,
     /** Use right after `createBill` returns, before React commits `billId` to context. */
@@ -68,6 +71,8 @@ type BillContextValue = {
   claimBillItem: (billItemId: string, claim: boolean) => Promise<void>
   /** Set how many units of each line are yours (0 = remove); batch then one refresh. */
   applyMyLineQty: (changes: { billItemId: string; qty: number }[]) => Promise<void>
+  /** Participant or host: set/clear shared-dish slot count (≥2); clear only when nobody has claimed. */
+  setItemShareAmong: (billItemId: string, shareAmong: number | null) => Promise<void>
   participantLabel: (userId: string) => string
   setManualDiscount: (d: { kind: 'percent' | 'amount'; value: number } | null) => void
   calculateResult: () => CalculateBillResult
@@ -78,15 +83,6 @@ type BillContextValue = {
 }
 
 const BillContext = createContext<BillContextValue | null>(null)
-
-function inviteCode(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let s = ''
-  const bytes = new Uint8Array(8)
-  crypto.getRandomValues(bytes)
-  for (let i = 0; i < 8; i++) s += alphabet[bytes[i]! % alphabet.length]
-  return s
-}
 
 export function BillProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
@@ -138,6 +134,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
             unit_price_cents: r.unit_price_cents,
             qty: r.qty,
             line_subtotal_cents: r.line_subtotal_cents,
+            share_among: r.share_among != null && r.share_among >= 2 ? r.share_among : null,
           }))
         )
         const partRows = (ps as ParticipantRow[]) ?? []
@@ -232,9 +229,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
     if (sessionError || !session?.user) {
       throw new Error('Your session expired. Sign in again.')
     }
-    const code = inviteCode()
     const { data, error } = await supabase.rpc('create_bill', {
-      p_invite_code: code,
       p_title: title ?? 'New bill',
       p_status: 'open',
       p_currency: APP_CURRENCY,
@@ -243,7 +238,10 @@ export function BillProvider({ children }: { children: ReactNode }) {
     const id = data as string
     setBillId(id)
     await refresh(id)
-    return id
+    const { data: row } = await supabase.from('bills').select('slug').eq('id', id).maybeSingle()
+    const slug = (row as { slug?: string | null } | null)?.slug?.trim()
+    const publicPath = slug && slug.length > 0 ? `/bill/${slug}` : `/bill/${id}`
+    return { id, publicPath }
   }, [refresh])
 
   const deleteBill = useCallback(async () => {
@@ -261,9 +259,9 @@ export function BillProvider({ children }: { children: ReactNode }) {
   }, [billId])
 
   const joinBill = useCallback(
-    async (inviteCodeRaw: string) => {
-      const { data, error } = await supabase.rpc('join_bill', {
-        p_invite: inviteCodeRaw.trim().toUpperCase(),
+    async (targetBillId: string) => {
+      const { data, error } = await supabase.rpc('join_bill_by_id', {
+        p_bill_id: targetBillId,
       })
       if (error) throw error
       const id = data as string
@@ -286,6 +284,8 @@ export function BillProvider({ children }: { children: ReactNode }) {
           | 'service_charge_cents'
           | 'tax_cents'
           | 'currency'
+          | 'bill_date'
+          | 'receipt_image_path'
         >
       >,
       targetBillId?: string
@@ -318,6 +318,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
         unit_price_cents: r.unit_price_cents,
         qty: r.qty,
         line_subtotal_cents: r.unit_price_cents * r.qty,
+        share_among: r.share_among != null && r.share_among >= 2 ? r.share_among : null,
       }))
       const { data, error } = await supabase.from('bill_items').insert(insertPayload).select('*')
       if (error) throw error
@@ -328,6 +329,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
           unit_price_cents: r.unit_price_cents,
           qty: r.qty,
           line_subtotal_cents: r.line_subtotal_cents,
+          share_among: r.share_among != null && r.share_among >= 2 ? r.share_among : null,
         }))
       )
       await refresh(id)
@@ -346,14 +348,17 @@ export function BillProvider({ children }: { children: ReactNode }) {
       const { error: derr } = await supabase.from('item_assignments').delete().eq('bill_item_id', billItemId)
       if (derr) throw derr
       if (userIds.length === 0) return
-      const lineQty = items.find((x) => x.id === billItemId)?.qty ?? 1
+      const row = items.find((x) => x.id === billItemId)
+      const lineQty = row?.qty ?? 1
+      const shareN = row?.share_among != null && row.share_among >= 2 ? row.share_among : null
+      const cap = shareN ?? lineQty
       const n = userIds.length
       const sorted = [...userIds].sort((a, b) => a.localeCompare(b))
       const payload = sorted.map((user_id, idx) => ({
         bill_item_id: billItemId,
         user_id,
         mode,
-        claimed_qty: Math.floor(lineQty / n) + (idx < lineQty % n ? 1 : 0),
+        claimed_qty: Math.floor(cap / n) + (idx < cap % n ? 1 : 0),
       }))
       const { error } = await supabase.from('item_assignments').insert(payload)
       if (error) throw error
@@ -388,6 +393,18 @@ export function BillProvider({ children }: { children: ReactNode }) {
     [refresh]
   )
 
+  const setItemShareAmong = useCallback(
+    async (billItemId: string, shareAmong: number | null) => {
+      const { error } = await supabase.rpc('set_bill_item_share_among', {
+        p_bill_item_id: billItemId,
+        p_share_among: shareAmong,
+      })
+      if (error) throw error
+      await refresh()
+    },
+    [refresh]
+  )
+
   const participantLabel = useCallback(
     (userId: string) => participantNames[userId] ?? `${userId.slice(0, 8)}…`,
     [participantNames]
@@ -414,6 +431,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
         name: i.name,
         unitPriceCents: i.unit_price_cents,
         qty: i.qty,
+        shareAmong: i.share_among,
       })),
       participantIds,
       assignments: assignments.map((a) => ({
@@ -450,6 +468,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
         name: i.name,
         unitPriceCents: i.unit_price_cents,
         qty: i.qty,
+        shareAmong: i.share_among,
       })),
       participantIds,
       assignments: assignments.map((a) => ({
@@ -479,6 +498,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
         name: i.name,
         unitPriceCents: i.unit_price_cents,
         qty: i.qty,
+        ...(i.share_among != null ? { shareAmong: i.share_among } : {}),
       })),
       discountType: bill.discount_type,
       discountValue: Number(bill.discount_value),
@@ -506,6 +526,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
         name: i.name,
         unit_price_cents: i.unitPriceCents,
         qty: i.qty,
+        share_among: i.shareAmong ?? null,
       }))
     )
     clearDraft(billId)
@@ -533,6 +554,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
       assignItem,
       claimBillItem,
       applyMyLineQty,
+      setItemShareAmong,
       participantLabel,
       setManualDiscount,
       calculateResult,
@@ -560,6 +582,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
       assignItem,
       claimBillItem,
       applyMyLineQty,
+      setItemShareAmong,
       participantLabel,
       calculateResult,
       calculateMySharePartial,

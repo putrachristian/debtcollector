@@ -89,12 +89,11 @@ Use **Google** or **email/password** (depending on what you enabled in Supabase)
 
 ### Joining a bill
 
-- Open a bill from Home or use an **invite link**: `/join/<INVITE_CODE>` (the code is shown on the bill card).
-- If you open a bill you are not on yet, use **Join this bill** so you become a **participant** and can use **My order** / **My total**.
+- Open a bill from Home or follow a **bill link** (`/bill/<slug>` or `/bill/<uuid>`). If the bill is open, you are added as a **participant** automatically so you can use **My order** and **My total**.
 
 ### On a bill (host and guests)
 
-- **Edit bill** (host only): title, invite link, line items, discounts, service, tax; **Save bill to server** returns you to **My order** when save succeeds.
+- **Edit bill** (host only): title, line items, discounts, service, tax; **Save bill to server** returns you to **My order** when save succeeds.
 - **My order**: claim line items and quantities, then **Confirm my order** at the bottom.
 - **My total**: your share from what you claimed (works before every line is assigned). Non-hosts see **Confirm paid** toward the host when they still owe; that writes a settled **payment** and updates **My debt**.
 - **Who picked this** lists other people’s claims on each line (names from profiles).

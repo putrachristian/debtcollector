@@ -17,6 +17,8 @@ export interface BillItemInput {
   name?: string
   unitPriceCents: number
   qty: number
+  /** Split line total across this many people (each claims slots with claimedQty). */
+  shareAmong?: number | null
 }
 
 export interface AssignmentInput {
@@ -172,6 +174,49 @@ function validateAndBuildPreDiscount(
     const gross = lineCents(item)
     const label = itemLabel(item)
     const rows = byItem.get(item.id) ?? []
+    const shareAmong =
+      item.shareAmong != null && item.shareAmong >= 2 ? Math.trunc(item.shareAmong) : null
+
+    if (shareAmong != null) {
+      if (rows.length === 0) {
+        errors.push(`${label}: nobody has claimed this line yet`)
+        continue
+      }
+      const modes = new Set(rows.map((r) => r.mode))
+      if (modes.size > 1) {
+        errors.push(`${label}: mixes individual and shared split modes`)
+        continue
+      }
+      const allHaveQty = rows.every(
+        (r) => r.claimedQty != null && Number.isFinite(r.claimedQty) && Math.trunc(r.claimedQty!) > 0
+      )
+      if (!allHaveQty) {
+        errors.push(`${label}: set how many slots each person has for this shared dish`)
+        continue
+      }
+      const sumClaimed = rows.reduce((s, r) => s + Math.max(0, Math.trunc(r.claimedQty ?? 0)), 0)
+      if (sumClaimed > shareAmong) {
+        errors.push(`${label}: too many slots claimed (max ${shareAmong} for this shared dish)`)
+        continue
+      }
+      if (sumClaimed < shareAmong) {
+        errors.push(
+          `${label}: shared among ${shareAmong} — ${sumClaimed} slot(s) claimed (need all ${shareAmong} to close the bill)`
+        )
+        continue
+      }
+      const userIds = uniqueSorted(rows.map((r) => r.userId))
+      const weights = new Map<string, number>()
+      for (const r of rows) {
+        weights.set(r.userId, Math.max(0, Math.trunc(r.claimedQty!)))
+      }
+      const shares = allocateByWeights(gross, weights, userIds)
+      for (const [uid, cents] of shares) {
+        pre.set(uid, (pre.get(uid) ?? 0) + cents)
+      }
+      continue
+    }
+
     if (rows.length === 0) {
       errors.push(`${label}: nobody has claimed this line yet`)
       continue
@@ -351,6 +396,13 @@ export function calculateBill(input: CalculateBillInput): CalculateBillResult {
 function viewerLineFoodCents(item: BillItemInput, rows: AssignmentInput[], viewerId: string): number {
   if (rows.length === 0) return 0
   const gross = lineCents(item)
+  const shareAmong =
+    item.shareAmong != null && item.shareAmong >= 2 ? Math.trunc(item.shareAmong) : null
+  if (shareAmong != null) {
+    const mine = rows.filter((r) => r.userId === viewerId)
+    const myQ = mine.length ? Math.max(0, Math.trunc(mine[0]!.claimedQty ?? 0)) : 0
+    return Math.floor((gross * myQ) / shareAmong)
+  }
   const qty = Math.max(0, Math.trunc(item.qty))
   const userIds = uniqueSorted(rows.map((r) => r.userId))
   const mine = rows.filter((r) => r.userId === viewerId)

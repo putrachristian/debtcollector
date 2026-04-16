@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useDebt } from '@/context/DebtContext'
 import { Button } from '@/components/ui/button'
+import { PaymentConfirmDialog } from '@/components/PaymentConfirmDialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatCents } from '@/lib/money'
 
@@ -11,6 +12,7 @@ export function DebtPage() {
   const { outstandingDebts, recordBillSharePaid, loading, error } = useDebt()
   const [busyId, setBusyId] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [confirmPay, setConfirmPay] = useState<{ billId: string; hostId: string; amountCents: number } | null>(null)
 
   const rows = useMemo(() => outstandingDebts, [outstandingDebts])
 
@@ -19,6 +21,7 @@ export function DebtPage() {
     setBusyId(billId)
     try {
       await recordBillSharePaid({ billId, toUserId: hostId, amountCents })
+      setConfirmPay(null)
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Failed to record payment')
     } finally {
@@ -64,12 +67,12 @@ export function DebtPage() {
                   type="button"
                   className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-h-10"
                   disabled={busyId === d.billId}
-                  onClick={() => void confirmPaid(d.billId, d.hostId, d.remainingCents)}
+                  onClick={() => setConfirmPay({ billId: d.billId, hostId: d.hostId, amountCents: d.remainingCents })}
                 >
                   {busyId === d.billId ? 'Saving…' : `Confirm paid ${formatCents(d.remainingCents)}`}
                 </Button>
                 <Button variant="outline" className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-h-10" asChild>
-                  <Link to={`/bill/${d.billId}`}>Open bill</Link>
+                  <Link to={d.billPath}>Open bill</Link>
                 </Button>
               </div>
             </CardContent>
@@ -82,6 +85,16 @@ export function DebtPage() {
       ) : null}
 
       {msg ? <p className="text-sm text-destructive">{msg}</p> : null}
+
+      <PaymentConfirmDialog
+        open={confirmPay !== null}
+        busy={confirmPay !== null && busyId === confirmPay.billId}
+        onCancel={() => setConfirmPay(null)}
+        onConfirm={() => {
+          if (!confirmPay) return
+          void confirmPaid(confirmPay.billId, confirmPay.hostId, confirmPay.amountCents)
+        }}
+      />
     </div>
   )
 }

@@ -16,8 +16,6 @@ type AuthContextValue = {
   session: Session | null
   profile: Profile | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, displayName?: string) => Promise<void>
   /** Opens Google consent; returns to `redirectPath` on your site (defaults to `/`). */
   signInWithGoogle: (redirectPath?: string) => Promise<void>
   signOut: () => Promise<void>
@@ -82,20 +80,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [loadProfile])
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
-  }, [])
-
-  const signUp = useCallback(async (email: string, password: string, displayName?: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { display_name: displayName } },
-    })
-    if (error) throw error
-  }, [])
-
   const signInWithGoogle = useCallback(async (redirectPath = '/') => {
     const path = redirectPath.startsWith('/') ? redirectPath : `/${redirectPath}`
     const redirectTo = new URL(path, window.location.origin).href
@@ -125,12 +109,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       loading,
-      signIn,
-      signUp,
       signInWithGoogle,
       signOut,
     }),
-    [user, session, profile, loading, signIn, signUp, signInWithGoogle, signOut]
+    [user, session, profile, loading, signInWithGoogle, signOut]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

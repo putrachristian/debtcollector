@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { GoogleIcon } from '@/components/GoogleIcon'
 import { PwaInstallPrompt } from '@/components/PwaInstallPrompt'
+import { formatIsoDateLabel } from '@/lib/date'
+import { billPublicPath } from '@/lib/billPath'
 
 function isOpenBill(b: BillRow): boolean {
   return b.status !== 'closed'
@@ -126,9 +128,6 @@ export function HomePage() {
             Continue with Google
           </Button>
           {oauthErr ? <p className="text-sm text-destructive">{oauthErr}</p> : null}
-          <Button asChild variant="secondary" className="min-h-12 w-full touch-manipulation sm:min-h-10">
-            <Link to="/auth">Email sign in</Link>
-          </Button>
         </CardContent>
       </Card>
       </div>
@@ -137,14 +136,16 @@ export function HomePage() {
 
   function billCard(b: BillRow, uid: string) {
     return (
-      <Link key={b.id} to={`/bill/${b.id}`} className="block touch-manipulation active:opacity-90">
+      <Link key={b.id} to={billPublicPath(b)} className="block touch-manipulation active:opacity-90">
         <Card className="transition-colors hover:bg-muted/40 active:bg-muted/60">
           <CardHeader className="py-5 sm:py-4">
             <CardTitle className="text-base">{b.title ?? 'Untitled'}</CardTitle>
             {b.host_id === uid ? (
               <p className="text-xs font-medium text-primary/90">You’re the host</p>
             ) : null}
-            <p className="text-xs text-muted-foreground font-mono">Invite {b.invite_code}</p>
+            {b.bill_date ? (
+              <p className="text-xs text-muted-foreground">{formatIsoDateLabel(b.bill_date)}</p>
+            ) : null}
             {!isOpenBill(b) ? (
               <p className="text-xs font-medium text-muted-foreground">Closed</p>
             ) : b.status === 'draft' ? (
@@ -158,15 +159,7 @@ export function HomePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Home</h1>
-        <Button
-          className="min-h-12 w-full touch-manipulation text-base sm:w-auto sm:min-h-10 sm:text-sm"
-          asChild
-        >
-          <Link to="/bill/new">New bill</Link>
-        </Button>
-      </div>
+      <h1 className="text-2xl font-semibold tracking-tight">Home</h1>
 
       <PwaInstallPrompt />
 
@@ -174,14 +167,13 @@ export function HomePage() {
         <h2 className="text-lg font-semibold tracking-tight">Open bills</h2>
         <p className="text-sm text-muted-foreground">
           Every signed-in user sees all <span className="font-medium text-foreground">open</span> bills. Open one to
-          browse; tap <span className="font-medium text-foreground">Join this bill</span> there to add yourself and pick
-          your order.
+          browse; you are added automatically so you can pick your order.
         </p>
         {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
         <div className="grid gap-3">
           {openBills.map((b) => billCard(b, user.id))}
           {!loading && openBills.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No open bills yet. Create one or open an invite link.</p>
+            <p className="text-sm text-muted-foreground">No open bills yet. Create one or open a bill link.</p>
           ) : null}
         </div>
       </section>

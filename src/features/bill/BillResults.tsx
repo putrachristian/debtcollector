@@ -13,21 +13,38 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
+import { PaymentConfirmDialog } from '@/components/PaymentConfirmDialog'
 import { APP_CURRENCY, formatCents } from '@/lib/money'
 
 export function BillResults() {
   const { user } = useAuth()
-  const { bill, calculateResult, calculateMySharePartial, participantLabel } = useBill()
+  const { bill, items, assignments, calculateResult, calculateMySharePartial, participantLabel } = useBill()
   const { payments, recordBillSharePaid } = useDebt()
   const cur = bill?.currency ?? APP_CURRENCY
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [showPaidConfirm, setShowPaidConfirm] = useState(false)
 
   const partial = useMemo(() => {
     if (!user || !bill) return null
     return calculateMySharePartial()
   }, [user, bill, calculateMySharePartial])
   const full = useMemo(() => calculateResult(), [calculateResult])
+
+  const myPicks = useMemo(() => {
+    if (!user) return []
+    const rows: { name: string; qty: number; shareAmong: number | null }[] = []
+    for (const a of assignments) {
+      if (a.user_id !== user.id) continue
+      const qty = Math.max(0, Math.trunc(a.claimed_qty ?? 0))
+      if (qty <= 0) continue
+      const item = items.find((i) => i.id === a.bill_item_id)
+      if (!item) continue
+      const shareAmong = item.share_among != null && item.share_among >= 2 ? item.share_among : null
+      rows.push({ name: item.name, qty, shareAmong })
+    }
+    return rows
+  }, [assignments, items, user])
 
   /** Same settled total as My debt: direct from payments so the row still works when the bill drops off the debt list. */
   const settledToHostOnBill = useMemo(() => {
@@ -61,6 +78,7 @@ export function BillResults() {
         amountCents: remainingToHost,
       })
       setMsg('Marked as paid.')
+      setShowPaidConfirm(false)
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Could not record payment')
     } finally {
@@ -104,6 +122,26 @@ export function BillResults() {
           </p>
         </CardHeader>
         <CardContent className="space-y-4 pt-0">
+          {myPicks.length > 0 ? (
+            <div className="space-y-2 border-b border-border/80 pb-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Your picks</p>
+              <ul className="space-y-2 text-sm">
+                {myPicks.map((row, idx) => (
+                  <li
+                    key={`${row.name}-${idx}`}
+                    className="flex flex-wrap items-baseline justify-between gap-2"
+                  >
+                    <span className="font-medium text-foreground">{row.name}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {row.shareAmong != null
+                        ? `${row.qty} slot${row.qty === 1 ? '' : 's'} of ${row.shareAmong} shared`
+                        : `${row.qty} ${row.qty === 1 ? 'unit' : 'units'}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <p className="text-3xl font-semibold tabular-nums tracking-tight">{formatCents(p.totalCents, cur)}</p>
           <dl className="grid gap-2 text-sm">
             <div className="flex items-baseline justify-between gap-6 border-b border-border/80 pb-2">
@@ -155,9 +193,9 @@ export function BillResults() {
               type="button"
               className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-h-10"
               disabled={busy}
-              onClick={() => void handleConfirmPaid()}
+              onClick={() => setShowPaidConfirm(true)}
             >
-              {busy ? 'Saving…' : `Confirm paid ${formatCents(remainingToHost, cur)}`}
+              Confirm paid {formatCents(remainingToHost, cur)}
             </Button>
           ) : bill && user.id !== bill.host_id && remainingToHost === 0 && p.totalCents > 0 ? (
             <p className="text-sm font-medium text-emerald-600 dark:text-emerald-500">Paid up on this bill.</p>
@@ -201,6 +239,13 @@ export function BillResults() {
         Open <Link to="/debts" className="font-medium text-primary underline-offset-2 hover:underline">My debt</Link>{' '}
         for all unpaid bills; confirming paid here updates that list.
       </p>
+
+      <PaymentConfirmDialog
+        open={showPaidConfirm}
+        busy={busy}
+        onCancel={() => setShowPaidConfirm(false)}
+        onConfirm={() => void handleConfirmPaid()}
+      />
     </div>
   )
 }
