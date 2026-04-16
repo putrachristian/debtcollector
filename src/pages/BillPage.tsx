@@ -473,11 +473,17 @@ export function BillPage() {
       ) : null}
 
       <Tabs value={splitTab} onValueChange={(v) => setSplitTab(v as 'assign' | 'results')}>
-        <TabsList className="grid w-full grid-cols-2 sm:inline-flex sm:w-auto">
-          <TabsTrigger value="assign" className="min-h-11 touch-manipulation">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-0.5 p-1 sm:inline-flex sm:h-9 sm:w-auto sm:items-center sm:gap-0 sm:p-1">
+          <TabsTrigger
+            value="assign"
+            className="min-h-11 w-full touch-manipulation sm:min-h-0 sm:w-auto sm:py-1"
+          >
             My order
           </TabsTrigger>
-          <TabsTrigger value="results" className="min-h-11 touch-manipulation">
+          <TabsTrigger
+            value="results"
+            className="min-h-11 w-full touch-manipulation sm:min-h-0 sm:w-auto sm:py-1"
+          >
             My total
           </TabsTrigger>
         </TabsList>

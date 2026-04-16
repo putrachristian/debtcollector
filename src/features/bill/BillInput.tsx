@@ -109,14 +109,23 @@ export function BillInput({ onApply, tab, onTabChange }: Props) {
   return (
     <div className="space-y-3">
       <Tabs value={tab} onValueChange={(v) => onTabChange(v as BillInputTab)}>
-        <TabsList className="grid h-auto w-full grid-cols-3 gap-0.5 p-1 sm:inline-flex sm:w-auto">
-          <TabsTrigger value="upload" className="min-h-11 touch-manipulation px-2 text-xs sm:text-sm">
+        <TabsList className="grid h-auto w-full grid-cols-3 gap-0.5 p-1 sm:inline-flex sm:h-9 sm:w-auto sm:items-center sm:gap-0 sm:p-1">
+          <TabsTrigger
+            value="upload"
+            className="min-h-11 w-full touch-manipulation px-2 text-xs sm:min-h-0 sm:w-auto sm:py-1 sm:text-sm"
+          >
             Upload
           </TabsTrigger>
-          <TabsTrigger value="camera" className="min-h-11 touch-manipulation px-2 text-xs sm:text-sm">
+          <TabsTrigger
+            value="camera"
+            className="min-h-11 w-full touch-manipulation px-2 text-xs sm:min-h-0 sm:w-auto sm:py-1 sm:text-sm"
+          >
             Photo
           </TabsTrigger>
-          <TabsTrigger value="manual" className="min-h-11 touch-manipulation px-2 text-xs sm:text-sm">
+          <TabsTrigger
+            value="manual"
+            className="min-h-11 w-full touch-manipulation px-2 text-xs sm:min-h-0 sm:w-auto sm:py-1 sm:text-sm"
+          >
             Manual
           </TabsTrigger>
         </TabsList>
