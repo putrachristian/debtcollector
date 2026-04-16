@@ -1,8 +1,26 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { LayoutList, Plus, Wallet } from 'lucide-react'
+import { LayoutList, Moon, Plus, Sun, Wallet } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useTheme } from '@/context/ThemeContext'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+
+function ThemeToggle({ className }: { className?: string }) {
+  const { theme, toggleTheme } = useTheme()
+  const isDark = theme === 'dark'
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn('shrink-0 touch-manipulation', className)}
+      onClick={toggleTheme}
+      aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+    >
+      {isDark ? <Sun aria-hidden /> : <Moon aria-hidden />}
+    </Button>
+  )
+}
 
 function mobileTabClass(active: boolean) {
   return cn(
@@ -57,6 +75,7 @@ export function AppLayout() {
             <Button variant="ghost" size="sm" asChild>
               <Link to="/debts">My debt</Link>
             </Button>
+            <ThemeToggle />
             {user ? (
               <>
                 <span className="max-w-[12rem] truncate text-sm text-muted-foreground" title={accountLabel(profile, user)}>
@@ -72,10 +91,11 @@ export function AppLayout() {
               </Button>
             )}
           </nav>
-          <div className="flex min-w-0 max-w-[55vw] items-center gap-2 md:hidden">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:hidden">
+            <ThemeToggle />
             {user ? (
               <>
-                <span className="truncate text-xs text-muted-foreground" title={accountLabel(profile, user)}>
+                <span className="min-w-0 max-w-[38vw] truncate text-xs text-muted-foreground" title={accountLabel(profile, user)}>
                   {accountLabel(profile, user)}
                 </span>
                 <Button variant="ghost" size="sm" className="h-10 shrink-0 px-2 text-xs" onClick={() => void signOut()}>
@@ -83,7 +103,7 @@ export function AppLayout() {
                 </Button>
               </>
             ) : !isAuthRoute ? (
-              <Button variant="outline" size="sm" className="h-10" asChild>
+              <Button variant="outline" size="sm" className="h-10 shrink-0" asChild>
                 <Link to="/auth">Sign in</Link>
               </Button>
             ) : null}
