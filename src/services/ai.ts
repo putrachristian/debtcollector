@@ -227,22 +227,42 @@ function normalizeParsedReceipt(raw: Record<string, unknown>): ParsedReceipt {
     throw new Error('AI response missing items[]')
   }
 
-  const items: ParsedReceiptItem[] = itemsRaw.map((row, i) => {
-    if (!isRecord(row)) throw new Error(`AI items[${i}] is not an object`)
+  const droppedUnpriced: string[] = []
+  const items: ParsedReceiptItem[] = []
+  for (let i = 0; i < itemsRaw.length; i++) {
+    const row = itemsRaw[i]
+    if (!isRecord(row)) continue
     const name = typeof row.name === 'string' ? row.name : ''
     const qty = typeof row.qty === 'number' && Number.isFinite(row.qty) ? row.qty : 1
     const pr = row.price
     if (typeof pr !== 'number' || !Number.isFinite(pr)) {
-      throw new Error(`AI items[${i}].price is not a number`)
+      const label = name.trim() || `line ${i + 1}`
+      droppedUnpriced.push(label)
+      continue
     }
-    return { name, qty, price: apiScalarToMinor(pr, currency) }
-  })
+    items.push({ name, qty, price: apiScalarToMinor(pr, currency) })
+  }
+  if (items.length === 0) {
+    throw new Error('AI items[] had no lines with a valid numeric price')
+  }
+
+  /** Sum of line extensions in minor units (qty × unit price). */
+  const sumLineItemsMinor = (): number =>
+    items.reduce((s, it) => s + Math.max(0, it.qty) * it.price, 0)
 
   const subNum = raw.subtotal
-  if (typeof subNum !== 'number' || !Number.isFinite(subNum)) {
+  let subtotal: number
+  if (typeof subNum === 'number' && Number.isFinite(subNum)) {
+    subtotal = apiScalarToMinor(subNum, currency)
+  } else if (subNum === null || subNum === undefined) {
+    // Workflows often return `subtotal: null` with a stringified JSON `result`; infer from lines.
+    subtotal = sumLineItemsMinor()
+    if (!Number.isFinite(subtotal) || subtotal < 0) {
+      throw new Error('AI response missing numeric subtotal and could not infer from items')
+    }
+  } else {
     throw new Error('AI response missing numeric subtotal')
   }
-  const subtotal = apiScalarToMinor(subNum, currency)
 
   let discount_type: DiscountType = 'percent'
   let discount_value = 0
@@ -313,7 +333,11 @@ function normalizeParsedReceipt(raw: Record<string, unknown>): ParsedReceipt {
         : undefined
   const confidence =
     typeof raw.confidence === 'number' && Number.isFinite(raw.confidence) ? raw.confidence : undefined
-  const warnings = Array.isArray(raw.warnings) ? raw.warnings : undefined
+  let warnings: unknown[] | undefined = Array.isArray(raw.warnings) ? [...raw.warnings] : undefined
+  if (droppedUnpriced.length > 0) {
+    const note = `Lines omitted (missing or invalid price): ${droppedUnpriced.join(', ')}`
+    warnings = warnings ? [...warnings, note] : [note]
+  }
   const bill_date = parseOptionalIsoDate(raw.date ?? raw.bill_date ?? raw.receipt_date)
 
   return {
