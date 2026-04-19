@@ -42,6 +42,8 @@ type BillContextValue = {
   setCurrentBillId: (id: string | null) => void
   createBill: (title?: string) => Promise<{ id: string; publicPath: string }>
   deleteBill: () => Promise<void>
+  /** Delete any bill you host (e.g. from home list without opening the bill). */
+  deleteBillById: (targetBillId: string) => Promise<void>
   joinBill: (billId: string) => Promise<string>
   refresh: (overrideBillId?: string) => Promise<void>
   updateBillMeta: (
@@ -57,6 +59,9 @@ type BillContextValue = {
         | 'currency'
         | 'bill_date'
         | 'receipt_image_path'
+        | 'payer_name'
+        | 'payer_account_number'
+        | 'group_id'
       >
     >,
     /** Use right after `createBill` returns, before React commits `billId` to context. */
@@ -258,6 +263,21 @@ export function BillProvider({ children }: { children: ReactNode }) {
     setManualDiscount(null)
   }, [billId])
 
+  const deleteBillById = useCallback(async (targetBillId: string) => {
+    const { error } = await supabase.from('bills').delete().eq('id', targetBillId)
+    if (error) throw error
+    clearDraft(targetBillId)
+    if (billId === targetBillId) {
+      setBillId(null)
+      setBill(null)
+      setItems([])
+      setParticipants([])
+      setAssignments([])
+      setParticipantNames({})
+      setManualDiscount(null)
+    }
+  }, [billId])
+
   const joinBill = useCallback(
     async (targetBillId: string) => {
       const { data, error } = await supabase.rpc('join_bill_by_id', {
@@ -284,8 +304,11 @@ export function BillProvider({ children }: { children: ReactNode }) {
           | 'service_charge_cents'
           | 'tax_cents'
           | 'currency'
-          | 'bill_date'
-          | 'receipt_image_path'
+        | 'bill_date'
+        | 'receipt_image_path'
+        | 'payer_name'
+        | 'payer_account_number'
+        | 'group_id'
         >
       >,
       targetBillId?: string
@@ -547,6 +570,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
       setCurrentBillId,
       createBill,
       deleteBill,
+      deleteBillById,
       joinBill,
       refresh,
       updateBillMeta,
@@ -575,6 +599,7 @@ export function BillProvider({ children }: { children: ReactNode }) {
       setCurrentBillId,
       createBill,
       deleteBill,
+      deleteBillById,
       joinBill,
       refresh,
       updateBillMeta,

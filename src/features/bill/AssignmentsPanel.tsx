@@ -209,6 +209,10 @@ export function AssignmentsPanel({ onOrderConfirmed }: Props) {
         const lineUnsaved =
           localUnits.has(it.id) && (localUnits.get(it.id) ?? 0) !== (serverMyUnits.get(it.id) ?? 0)
         const slotsClaimed = picks.reduce((s, p) => s + p.qty, 0)
+        /** No unclaimed slots left; you can still uncheck if you already have a pick. */
+        const lineHasNoRoomForNewClaim = slotsClaimed >= slotCap
+        const checkboxDisabled =
+          saving || !billOpen || (myUnits === 0 && lineHasNoRoomForNewClaim)
 
         return (
           <div key={it.id} className="rounded-lg border border-border bg-card/40 p-4 space-y-3">
@@ -287,7 +291,12 @@ export function AssignmentsPanel({ onOrderConfirmed }: Props) {
             <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-border bg-background/60 px-3 py-2 touch-manipulation">
               <Checkbox
                 checked={checked}
-                disabled={saving || !billOpen}
+                disabled={checkboxDisabled}
+                title={
+                  myUnits === 0 && lineHasNoRoomForNewClaim
+                    ? 'All units on this line are already claimed.'
+                    : undefined
+                }
                 onCheckedChange={(c) => {
                   const on = c === true
                   if (on) {

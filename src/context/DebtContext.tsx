@@ -10,7 +10,7 @@ import {
 import { supabase } from '@/services/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { calculateUserSharePartial } from '@/lib/calculateBill'
-import type { BillRow, BillItemRow, ItemAssignmentRow, ParticipantRow, PaymentRow } from '@/types'
+import type { BillRow, BillItemRow, ItemAssignmentRow, ParticipantRow, PaymentRow, Profile } from '@/types'
 import { billPublicPath } from '@/lib/billPath'
 
 export type OutstandingDebt = {
@@ -22,6 +22,15 @@ export type OutstandingDebt = {
   shareTotalCents: number
   settledCents: number
   remainingCents: number
+  /** Who to transfer to (host profile name, or payee name from the bill when you host but aren’t the payer). */
+  payToLabel: string
+  /** Payee account from the bill when you host but someone else receives payment (for display only). */
+  payToAccountHint: string | null
+  /**
+   * `payments.to_user_id` when recording “Confirm paid”: the host if you owe them, or **your own user id** if you
+   * hosted and paid someone off-app (self-referencing row — only for your ledger; money did not go to another app user).
+   */
+  paymentToUserId: string
 }
 
 type DebtContextValue = {
@@ -30,6 +39,7 @@ type DebtContextValue = {
   loading: boolean
   error: string | null
   refresh: () => Promise<void>
+  /** `toUserId` is usually the host; use your own user id when you settled to an external payee (see OutstandingDebt). */
   recordBillSharePaid: (input: { billId: string; toUserId: string; amountCents: number }) => Promise<void>
   requestSettlement: (input: {
     toUserId: string
@@ -43,8 +53,18 @@ type DebtContextValue = {
 
 const DebtContext = createContext<DebtContextValue | null>(null)
 
+/** True when the bill’s payee fields match the host’s profile (I’m the payer / you receive transfers). */
+function hostIsBillPayee(b: BillRow, profile: Profile | null, user: { id: string; email?: string | null }): boolean {
+  const dn = profile?.display_name?.trim() || (user.email?.split('@')[0] ?? '') || ''
+  const acct = (profile?.payment_account_number ?? '').trim()
+  const pn = (b.payer_name ?? '').trim()
+  const pa = (b.payer_account_number ?? '').trim()
+  if (!pn && !pa) return true
+  return pn === dn && pa === acct
+}
+
 export function DebtProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [payments, setPayments] = useState<PaymentRow[]>([])
   const [outstandingDebts, setOutstandingDebts] = useState<OutstandingDebt[]>([])
   const [loading, setLoading] = useState(false)
@@ -83,7 +103,7 @@ export function DebtProvider({ children }: { children: ReactNode }) {
 
     const { data: billsRaw, error: be } = await supabase.from('bills').select('*').in('id', billIds)
     if (be) throw be
-    const bills = ((billsRaw as BillRow[]) ?? []).filter((b) => b.host_id !== user.id)
+    const bills = (billsRaw as BillRow[]) ?? []
     if (bills.length === 0) {
       setOutstandingDebts([])
       return
@@ -199,21 +219,43 @@ export function DebtProvider({ children }: { children: ReactNode }) {
       const remainingCents = Math.max(0, share.totalCents - settledCents)
       if (remainingCents <= 0) continue
 
+      const viewerHosts = b.host_id === user.id
+      if (viewerHosts && hostIsBillPayee(b, profile, user)) {
+        continue
+      }
+
+      const hostLabel = hostNames[b.host_id] ?? `${b.host_id.slice(0, 8)}…`
+      let payToLabel: string
+      let payToAccountHint: string | null = null
+      /** Host receives in-app payment record; if you’re the host paying an external payee, we store from=to=self so it still counts toward settled share. */
+      const paymentToUserId = viewerHosts ? user.id : b.host_id
+
+      if (viewerHosts) {
+        payToLabel = (b.payer_name ?? '').trim() || 'Payee (see bill)'
+        const acct = (b.payer_account_number ?? '').trim()
+        payToAccountHint = acct || null
+      } else {
+        payToLabel = hostLabel
+      }
+
       out.push({
         billId: b.id,
         billPath: billPublicPath(b as BillRow),
         title: b.title,
         hostId: b.host_id,
-        hostDisplayName: hostNames[b.host_id] ?? `${b.host_id.slice(0, 8)}…`,
+        hostDisplayName: hostLabel,
         shareTotalCents: share.totalCents,
         settledCents,
         remainingCents,
+        payToLabel,
+        payToAccountHint,
+        paymentToUserId,
       })
     }
 
     out.sort((a, b) => b.remainingCents - a.remainingCents)
     setOutstandingDebts(out)
-  }, [user])
+  }, [user, profile])
 
   const refresh = useCallback(async () => {
     if (!user) {

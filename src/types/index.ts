@@ -15,6 +15,15 @@ export interface Profile {
   display_name: string | null
   avatar_url: string | null
   created_at: string
+  /** Your account / e-wallet number when you receive payments (“I’m the payer”). */
+  payment_account_number?: string | null
+}
+
+export interface BillGroupRow {
+  id: string
+  title: string
+  created_by: string
+  created_at: string
 }
 
 export interface BillRow {
@@ -36,6 +45,12 @@ export interface BillRow {
   receipt_image_path?: string | null
   /** Calendar date for the meal / receipt (YYYY-MM-DD). */
   bill_date?: string | null
+  /** Display name for who receives payment (e.g. host’s bank account name). */
+  payer_name?: string | null
+  /** Account / destination for transfers (e.g. bank account number). */
+  payer_account_number?: string | null
+  /** Optional day trip / hangout grouping (e.g. “Touring to Puncak”). */
+  group_id?: string | null
 }
 
 export interface BillItemRow {

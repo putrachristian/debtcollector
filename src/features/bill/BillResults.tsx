@@ -13,6 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
+import { CopyableAccountNumber } from '@/components/CopyableAccountNumber'
 import { PaymentConfirmDialog } from '@/components/PaymentConfirmDialog'
 import { APP_CURRENCY, formatCents } from '@/lib/money'
 
@@ -113,6 +114,26 @@ export function BillResults() {
 
   return (
     <div className="space-y-5">
+      {bill?.payer_name?.trim() || bill?.payer_account_number?.trim() ? (
+        <Card>
+          <CardHeader className="space-y-1 py-3">
+            <CardTitle className="text-base">Pay to</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Use these details when you transfer outside the app (e.g. bank or e-wallet).
+            </p>
+          </CardHeader>
+          <CardContent className="pt-0 text-sm">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pay to</span>
+              {bill.payer_name?.trim() ? <span className="font-medium">{bill.payer_name.trim()}</span> : null}
+              {bill.payer_account_number?.trim() ? (
+                <CopyableAccountNumber value={bill.payer_account_number.trim()} copyLabel="Copy payee account number" />
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card className="border-primary/25">
         <CardHeader className="py-4">
           <CardTitle className="text-base">What you owe on this bill</CardTitle>

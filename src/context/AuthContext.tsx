@@ -19,6 +19,8 @@ type AuthContextValue = {
   /** Opens Google consent; returns to `redirectPath` on your site (defaults to `/`). */
   signInWithGoogle: (redirectPath?: string) => Promise<void>
   signOut: () => Promise<void>
+  /** Updates profile row and refreshes local `profile`. */
+  updateProfile: (patch: Partial<Pick<Profile, 'display_name' | 'payment_account_number'>>) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -103,6 +105,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null)
   }, [])
 
+  const updateProfile = useCallback(
+    async (patch: Partial<Pick<Profile, 'display_name' | 'payment_account_number'>>) => {
+      if (!user) throw new Error('Not signed in')
+      const { error } = await supabase.from('profiles').update(patch).eq('id', user.id)
+      if (error) throw error
+      await loadProfile(user.id)
+    },
+    [user, loadProfile]
+  )
+
   const value = useMemo(
     () => ({
       user,
@@ -111,8 +123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signInWithGoogle,
       signOut,
+      updateProfile,
     }),
-    [user, session, profile, loading, signInWithGoogle, signOut]
+    [user, session, profile, loading, signInWithGoogle, signOut, updateProfile]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

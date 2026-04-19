@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pencil } from 'lucide-react'
 import { useBill } from '@/context/BillContext'
 import { useAuth } from '@/context/AuthContext'
@@ -18,6 +18,7 @@ import { APP_CURRENCY } from '@/lib/money'
 import type { BillRow } from '@/types'
 import { todayLocalIsoDate, formatIsoDateLabel } from '@/lib/date'
 import type { BillApplyMeta } from '@/features/bill/BillInput'
+import { CopyableAccountNumber } from '@/components/CopyableAccountNumber'
 import { BillShareButton } from '@/components/BillShareButton'
 import { billReceiptPublicUrl, uploadBillReceipt } from '@/services/receiptUpload'
 import { billPublicPath, isLikelyBillUuid, resolveBillRefToId } from '@/lib/billPath'
@@ -48,7 +49,7 @@ function isPlaceholderBillTitle(t: string | null | undefined): boolean {
 export function BillPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const {
     billId,
     bill,
@@ -79,6 +80,9 @@ export function BillPage() {
   const [joinErr, setJoinErr] = useState<string | null>(null)
   const [pendingReceiptFile, setPendingReceiptFile] = useState<File | null>(null)
   const [refResolveError, setRefResolveError] = useState<string | null>(null)
+  const [iAmPayer, setIAmPayer] = useState(true)
+  const [payerNameEdit, setPayerNameEdit] = useState('')
+  const [payerAccountEdit, setPayerAccountEdit] = useState('')
 
   useEffect(() => {
     if (!id) {
@@ -135,6 +139,19 @@ export function BillPage() {
   useEffect(() => {
     setAddItemTab('upload')
   }, [bill?.id])
+
+  useEffect(() => {
+    if (!bill || !hostEditMode || !user || bill.host_id !== user.id) return
+    const dn = profile?.display_name?.trim() || (user.email?.split('@')[0] ?? '') || ''
+    const acct = (profile?.payment_account_number ?? '').trim()
+    const bn = (bill.payer_name ?? '').trim()
+    const ba = (bill.payer_account_number ?? '').trim()
+    const matchesProfile = bn === dn && ba === acct
+    const empty = !bn && !ba
+    setIAmPayer(empty || matchesProfile)
+    setPayerNameEdit(bn)
+    setPayerAccountEdit(ba)
+  }, [bill?.id, bill?.payer_name, bill?.payer_account_number, bill?.host_id, hostEditMode, user, profile])
 
   const billShareUrl = useMemo(() => {
     if (!bill) return ''
@@ -275,24 +292,120 @@ export function BillPage() {
       </div>
 
       {hostFullUi ? (
-        <div className="space-y-2">
-          <Label htmlFor="title">Title</Label>
-          <Input
-            key={bill.title ?? ''}
-            id="title"
-            defaultValue={bill.title ?? ''}
-            onBlur={(e) => {
-              const v = e.target.value
-              if (v !== (bill.title ?? '')) void updateBillMeta({ title: v })
-            }}
-          />
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="title">Title</Label>
+            <Input
+              key={bill.title ?? ''}
+              id="title"
+              defaultValue={bill.title ?? ''}
+              onBlur={(e) => {
+                const v = e.target.value
+                if (v !== (bill.title ?? '')) void updateBillMeta({ title: v })
+              }}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm">Who receives payment?</Label>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={iAmPayer ? 'default' : 'outline'}
+                className="min-h-10 touch-manipulation"
+                onClick={() => {
+                  setIAmPayer(true)
+                  if (!user) return
+                  const dn =
+                    profile?.display_name?.trim() || (user.email?.split('@')[0] ?? '') || null
+                  const acct = profile?.payment_account_number?.trim() || null
+                  void updateBillMeta({ payer_name: dn, payer_account_number: acct })
+                }}
+              >
+                I’m the payer
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={!iAmPayer ? 'default' : 'outline'}
+                className="min-h-10 touch-manipulation"
+                onClick={() => setIAmPayer(false)}
+              >
+                Someone else
+              </Button>
+            </div>
+            {iAmPayer ? (
+              <p className="text-xs text-muted-foreground">
+                Guests will see your profile name and the account number from{' '}
+                <Link to="/debts" className="font-medium text-primary underline-offset-2 hover:underline">
+                  My debt
+                </Link>
+                . Add your account number there if you haven’t.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Label htmlFor="edit-payer-name" className="sr-only">
+                    Payee name
+                  </Label>
+                  <Input
+                    id="edit-payer-name"
+                    className="min-h-10 text-base md:text-sm"
+                    placeholder="Payee name"
+                    value={payerNameEdit}
+                    onChange={(e) => setPayerNameEdit(e.target.value)}
+                    onBlur={() => {
+                      const v = payerNameEdit.trim()
+                      if (v !== (bill.payer_name ?? '').trim()) void updateBillMeta({ payer_name: v || null })
+                    }}
+                    autoComplete="name"
+                  />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Label htmlFor="edit-payer-account" className="sr-only">
+                    Account number
+                  </Label>
+                  <Input
+                    id="edit-payer-account"
+                    className="min-h-10 font-mono text-base md:text-sm"
+                    placeholder="Account / e-wallet number"
+                    value={payerAccountEdit}
+                    onChange={(e) => setPayerAccountEdit(e.target.value)}
+                    onBlur={() => {
+                      const v = payerAccountEdit.trim()
+                      if (v !== (bill.payer_account_number ?? '').trim()) {
+                        void updateBillMeta({ payer_account_number: v || null })
+                      }
+                    }}
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Trip groups are managed on{' '}
+            <Link to="/" className="font-medium text-primary underline-offset-2 hover:underline">
+              Home
+            </Link>{' '}
+            (create a group, add bills, or remove a bill from a group).
+          </p>
         </div>
       ) : (
         <Card>
-          <CardHeader className="py-3 space-y-1">
+          <CardHeader className="space-y-1 py-3">
             <CardTitle className="text-base">{bill.title || 'Untitled'}</CardTitle>
             {bill.bill_date ? (
               <p className="text-sm text-muted-foreground">Bill date: {formatIsoDateLabel(bill.bill_date)}</p>
+            ) : null}
+            {bill.payer_name?.trim() || bill.payer_account_number?.trim() ? (
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-md border border-border/80 bg-muted/30 px-3 py-2 text-sm">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pay to</span>
+                {bill.payer_name?.trim() ? <span className="font-medium">{bill.payer_name.trim()}</span> : null}
+                {bill.payer_account_number?.trim() ? (
+                  <CopyableAccountNumber value={bill.payer_account_number.trim()} copyLabel="Copy payee account number" />
+                ) : null}
+              </div>
             ) : null}
           </CardHeader>
         </Card>
