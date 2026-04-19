@@ -13,6 +13,8 @@ type Props = {
   disabled?: boolean
   /** Primary action label (e.g. "Create bill" on the new-bill page). */
   saveLabel?: string
+  /** When true, omit the primary save button (parent supplies actions, e.g. Save + Cancel). */
+  hideSaveButton?: boolean
 }
 
 function lineTotal(line: DraftLine): number {
@@ -30,7 +32,14 @@ function draftBillDiscountCents(lineSubtotal: number, draft: BillDraft): number 
   return Math.min(Math.floor((lineSubtotal * bps) / 10000), lineSubtotal)
 }
 
-export function ItemsEditor({ draft, onChange, onSave, disabled, saveLabel = 'Save bill to server' }: Props) {
+export function ItemsEditor({
+  draft,
+  onChange,
+  onSave,
+  disabled,
+  saveLabel = 'Save bill to server',
+  hideSaveButton = false,
+}: Props) {
   const cur = draft.currency ?? APP_CURRENCY
   const [priceInputs, setPriceInputs] = useState<Record<string, string>>({})
 
@@ -266,15 +275,16 @@ export function ItemsEditor({ draft, onChange, onSave, disabled, saveLabel = 'Sa
         </p>
       </div>
 
-      <Button
-        type="button"
-        disabled={disabled}
-        className="min-h-12 w-full touch-manipulation text-base md:w-auto md:min-h-10 md:text-sm"
-        onClick={onSave}
-      >
-        {saveLabel}
-      </Button>
-
+      {hideSaveButton ? null : (
+        <Button
+          type="button"
+          disabled={disabled}
+          className="min-h-12 w-full touch-manipulation text-base md:w-auto md:min-h-10 md:text-sm"
+          onClick={onSave}
+        >
+          {saveLabel}
+        </Button>
+      )}
     </div>
   )
 }

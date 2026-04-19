@@ -6,9 +6,11 @@ type Props = {
   billUrl: string
   title?: string
   className?: string
+  /** Round icon-only control for floating action buttons. */
+  iconOnly?: boolean
 }
 
-export function BillShareButton({ billUrl, title, className }: Props) {
+export function BillShareButton({ billUrl, title, className, iconOnly }: Props) {
   const [msg, setMsg] = useState<string | null>(null)
 
   async function onShare() {
@@ -28,6 +30,31 @@ export function BillShareButton({ billUrl, title, className }: Props) {
     } catch {
       setMsg('Could not copy link')
     }
+  }
+
+  if (iconOnly) {
+    return (
+      <div className="relative">
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          className={
+            className ??
+            'size-14 shrink-0 touch-manipulation rounded-full border border-border/80 bg-card shadow-lg'
+          }
+          aria-label="Share bill link"
+          onClick={() => void onShare()}
+        >
+          <Share2 className="size-5 shrink-0" aria-hidden />
+        </Button>
+        {msg ? (
+          <p className="absolute -top-8 right-0 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs text-background shadow">
+            {msg}
+          </p>
+        ) : null}
+      </div>
+    )
   }
 
   return (

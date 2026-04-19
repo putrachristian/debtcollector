@@ -18,8 +18,7 @@ import {
 } from '@/lib/calculateBill'
 import { APP_CURRENCY } from '@/lib/money'
 import type { AssignmentMode, BillItemRow, BillRow, ItemAssignmentRow, ParticipantRow } from '@/types'
-import { clearDraft, loadDraft, saveDraft } from '@/services/draftStorage'
-import type { DraftBillPayload } from '@/types'
+import { clearDraft } from '@/services/draftStorage'
 
 type LocalItem = {
   id: string
@@ -83,8 +82,6 @@ type BillContextValue = {
   calculateResult: () => CalculateBillResult
   /** Your share from lines you claimed; works before the whole bill is fully assigned. */
   calculateMySharePartial: () => UserSharePartialResult
-  persistDraft: () => void
-  restoreOfflineDraft: () => Promise<boolean>
 }
 
 const BillContext = createContext<BillContextValue | null>(null)
@@ -508,55 +505,6 @@ export function BillProvider({ children }: { children: ReactNode }) {
     })
   }, [bill, user, items, participants, assignments, manualDiscount])
 
-  const persistDraft = useCallback(() => {
-    if (!billId || !bill) return
-    const payload: DraftBillPayload & { billId: string } = {
-      billId,
-      version: 1,
-      updatedAt: new Date().toISOString(),
-      title: bill.title ?? '',
-      currency: bill.currency ?? APP_CURRENCY,
-      items: items.map((i) => ({
-        id: i.id,
-        name: i.name,
-        unitPriceCents: i.unit_price_cents,
-        qty: i.qty,
-        ...(i.share_among != null ? { shareAmong: i.share_among } : {}),
-      })),
-      discountType: bill.discount_type,
-      discountValue: Number(bill.discount_value),
-      serviceChargeCents: bill.service_charge_cents,
-      taxCents: bill.tax_cents,
-    }
-    saveDraft(payload)
-  }, [billId, bill, items])
-
-  const restoreOfflineDraft = useCallback(async () => {
-    if (!billId || !bill) return false
-    const d = loadDraft(billId)
-    if (!d) return false
-    await updateBillMeta({
-      title: d.title,
-      discount_type: d.discountType,
-      discount_value: d.discountValue,
-      service_charge_cents: d.serviceChargeCents,
-      tax_cents: d.taxCents,
-      currency: d.currency ?? APP_CURRENCY,
-    })
-    await updateItems(
-      d.items.map((i) => ({
-        id: i.id,
-        name: i.name,
-        unit_price_cents: i.unitPriceCents,
-        qty: i.qty,
-        share_among: i.shareAmong ?? null,
-      }))
-    )
-    clearDraft(billId)
-    await refresh()
-    return true
-  }, [billId, bill, updateBillMeta, updateItems, refresh])
-
   const value = useMemo(
     () => ({
       billId,
@@ -583,8 +531,6 @@ export function BillProvider({ children }: { children: ReactNode }) {
       setManualDiscount,
       calculateResult,
       calculateMySharePartial,
-      persistDraft,
-      restoreOfflineDraft,
     }),
     [
       billId,
@@ -611,8 +557,6 @@ export function BillProvider({ children }: { children: ReactNode }) {
       participantLabel,
       calculateResult,
       calculateMySharePartial,
-      persistDraft,
-      restoreOfflineDraft,
     ]
   )
 

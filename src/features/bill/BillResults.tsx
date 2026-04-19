@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { CopyableAccountNumber } from '@/components/CopyableAccountNumber'
 import { PaymentConfirmDialog } from '@/components/PaymentConfirmDialog'
+import { foodSubtotalCentsForViewerOnLine, type AssignmentInput } from '@/lib/calculateBill'
 import { APP_CURRENCY, formatCents } from '@/lib/money'
 
 export function BillResults() {
@@ -34,15 +35,37 @@ export function BillResults() {
 
   const myPicks = useMemo(() => {
     if (!user) return []
-    const rows: { name: string; qty: number; shareAmong: number | null }[] = []
+    const byItemId = new Map<string, typeof assignments>()
     for (const a of assignments) {
-      if (a.user_id !== user.id) continue
-      const qty = Math.max(0, Math.trunc(a.claimed_qty ?? 0))
+      const list = byItemId.get(a.bill_item_id) ?? []
+      list.push(a)
+      byItemId.set(a.bill_item_id, list)
+    }
+    const rows: { name: string; qty: number; shareAmong: number | null; foodCents: number }[] = []
+    for (const item of items) {
+      const rowsForItem = byItemId.get(item.id) ?? []
+      const mine = rowsForItem.filter((r) => r.user_id === user.id)
+      const qty = mine.reduce((s, r) => s + Math.max(0, Math.trunc(r.claimed_qty ?? 0)), 0)
       if (qty <= 0) continue
-      const item = items.find((i) => i.id === a.bill_item_id)
-      if (!item) continue
       const shareAmong = item.share_among != null && item.share_among >= 2 ? item.share_among : null
-      rows.push({ name: item.name, qty, shareAmong })
+      const assignmentInputs: AssignmentInput[] = rowsForItem.map((r) => ({
+        billItemId: r.bill_item_id,
+        userId: r.user_id,
+        mode: r.mode,
+        claimedQty: r.claimed_qty ?? 1,
+      }))
+      const foodCents = foodSubtotalCentsForViewerOnLine(
+        {
+          id: item.id,
+          name: item.name,
+          unitPriceCents: item.unit_price_cents,
+          qty: item.qty,
+          shareAmong: item.share_among,
+        },
+        assignmentInputs,
+        user.id
+      )
+      rows.push({ name: item.name, qty, shareAmong, foodCents })
     }
     return rows
   }, [assignments, items, user])
@@ -150,13 +173,18 @@ export function BillResults() {
                 {myPicks.map((row, idx) => (
                   <li
                     key={`${row.name}-${idx}`}
-                    className="flex flex-wrap items-baseline justify-between gap-2"
+                    className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
                   >
-                    <span className="font-medium text-foreground">{row.name}</span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {row.shareAmong != null
-                        ? `${row.qty} slot${row.qty === 1 ? '' : 's'} of ${row.shareAmong} shared`
-                        : `${row.qty} ${row.qty === 1 ? 'unit' : 'units'}`}
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium text-foreground">{row.name}</span>
+                      <span className="ml-2 text-muted-foreground">
+                        {row.shareAmong != null
+                          ? `${row.qty} slot${row.qty === 1 ? '' : 's'} of ${row.shareAmong} shared`
+                          : `${row.qty} ${row.qty === 1 ? 'unit' : 'units'}`}
+                      </span>
+                    </div>
+                    <span className="shrink-0 tabular-nums font-medium text-foreground">
+                      {formatCents(row.foodCents, cur)}
                     </span>
                   </li>
                 ))}

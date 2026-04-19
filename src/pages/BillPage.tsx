@@ -13,12 +13,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { loadDraft } from '@/services/draftStorage'
 import { APP_CURRENCY } from '@/lib/money'
 import type { BillRow } from '@/types'
 import { todayLocalIsoDate, formatIsoDateLabel } from '@/lib/date'
 import type { BillApplyMeta } from '@/features/bill/BillInput'
-import { CopyableAccountNumber } from '@/components/CopyableAccountNumber'
 import { BillShareButton } from '@/components/BillShareButton'
 import { billReceiptPublicUrl, uploadBillReceipt } from '@/services/receiptUpload'
 import { billPublicPath, isLikelyBillUuid, resolveBillRefToId } from '@/lib/billPath'
@@ -61,8 +59,6 @@ export function BillPage() {
     updateItems,
     updateBillMeta,
     deleteBill,
-    persistDraft,
-    restoreOfflineDraft,
     setManualDiscount,
     manualDiscount,
     joinBill,
@@ -256,8 +252,11 @@ export function BillPage() {
     return <p className="text-sm text-destructive">Bill not found.</p>
   }
 
-  const hasLocalDraft = isHost && hostEditMode && !!loadDraft(bill.id)
   const hostFullUi = isHost && hostEditMode
+  /** Normal “pick your order” view — fixed bottom tabs + FABs; not host line-item editing. */
+  const pickOrderView = !hostFullUi
+  const showOrderFab =
+    pickOrderView && splitTab === 'assign' && isHost && bill.status !== 'closed'
 
   const manualDraftHidden =
     editor !== null && draftSource === 'manual' && addItemTab !== 'manual'
@@ -271,13 +270,24 @@ export function BillPage() {
       (draftSource === 'manual' && addItemTab === 'manual'))
 
   return (
-    <div className="space-y-5 md:space-y-6">
-      <div className="flex items-center gap-1 md:hidden">
+    <div
+      className={
+        pickOrderView
+          ? 'space-y-5 pb-28 pt-0 md:space-y-6 md:pb-32'
+          : 'space-y-5 md:space-y-6'
+      }
+    >
+      <header
+        className="sticky z-30 -mx-4 -mt-4 mb-0 flex items-start gap-2 border-b border-border/70 bg-background/95 px-4 pb-3 pt-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/85"
+        style={{
+          top: 'calc(env(safe-area-inset-top, 0px) + 3.5rem)',
+        }}
+      >
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          className="size-11 shrink-0 touch-manipulation"
+          className="mt-0.5 size-11 shrink-0 touch-manipulation md:hidden"
           aria-label="Back"
           onClick={() => navigate(-1)}
         >
@@ -287,9 +297,11 @@ export function BillPage() {
           <p className="text-xs text-muted-foreground">
             {isHost ? (hostEditMode ? 'Host' : 'Host · pick your order') : 'Guest'}
           </p>
-          <p className="truncate font-semibold leading-tight">{bill.title || 'Untitled'}</p>
+          <h1 className="truncate text-xl font-semibold leading-tight tracking-tight md:text-2xl">
+            {bill.title || 'Untitled'}
+          </h1>
         </div>
-      </div>
+      </header>
 
       {hostFullUi ? (
         <div className="space-y-4">
@@ -391,98 +403,24 @@ export function BillPage() {
             (create a group, add bills, or remove a bill from a group).
           </p>
         </div>
-      ) : (
+      ) : bill.bill_date ? (
         <Card>
-          <CardHeader className="space-y-1 py-3">
-            <CardTitle className="text-base">{bill.title || 'Untitled'}</CardTitle>
-            {bill.bill_date ? (
-              <p className="text-sm text-muted-foreground">Bill date: {formatIsoDateLabel(bill.bill_date)}</p>
-            ) : null}
-            {bill.payer_name?.trim() || bill.payer_account_number?.trim() ? (
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-md border border-border/80 bg-muted/30 px-3 py-2 text-sm">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pay to</span>
-                {bill.payer_name?.trim() ? <span className="font-medium">{bill.payer_name.trim()}</span> : null}
-                {bill.payer_account_number?.trim() ? (
-                  <CopyableAccountNumber value={bill.payer_account_number.trim()} copyLabel="Copy payee account number" />
-                ) : null}
-              </div>
-            ) : null}
+          <CardHeader className="space-y-0 py-3">
+            <p className="text-sm text-muted-foreground">
+              Bill date: {formatIsoDateLabel(bill.bill_date)}
+            </p>
           </CardHeader>
         </Card>
-      )}
-
-      {bill.receipt_image_path ? (
-        <div className="overflow-hidden rounded-lg border border-border bg-muted/20">
-          <img
-            src={billReceiptPublicUrl(bill.receipt_image_path)}
-            alt="Receipt"
-            className="mx-auto max-h-[min(70vh,560px)] w-full object-contain"
-          />
-        </div>
       ) : null}
 
       {joinErr ? <p className="text-sm text-destructive">{joinErr}</p> : null}
 
-      {isHost && bill.status !== 'closed' ? (
-        <Card>
-          <CardHeader className="py-3">
-            <CardTitle className="text-base">Share this bill</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Anyone with the link can open the bill; sign-in is still required to pick items and see totals.
-            </p>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <BillShareButton billUrl={billShareUrl} title={bill.title ?? 'Bill'} />
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {isHost && !hostEditMode ? (
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <Button
-            type="button"
-            className="min-h-12 w-full touch-manipulation gap-2 sm:w-auto sm:min-h-10"
-            onClick={() => setHostEditMode(true)}
-          >
-            <Pencil className="size-4 shrink-0" />
-            Edit bill
-          </Button>
-          <p className="text-sm text-muted-foreground">
-            Change line items or close the bill. Otherwise use{' '}
-            <span className="font-medium text-foreground">My order</span> below like everyone else.
-          </p>
-        </div>
-      ) : null}
-
-      {!hostFullUi ? (
+      {pickOrderView ? (
         <p className="text-sm text-muted-foreground">
           {isHost
-            ? 'Use My order to set your units, then My total to see what you owe. Use Edit bill to change the receipt or settings.'
-            : 'Only the host can change line items and charges. Use My order to set your share, then My total for your amount.'}
+            ? 'Use Order details to set your units, then My total to see what you owe. Tap the pencil to change line items or close the bill.'
+            : 'Only the host can change line items and charges. Use Order details to set your share, then My total for your amount.'}
         </p>
-      ) : null}
-
-      {hostFullUi ? (
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Button
-            type="button"
-            variant="secondary"
-            className="min-h-11 w-full touch-manipulation sm:w-auto sm:min-h-9"
-            onClick={() => persistDraft()}
-          >
-            Save offline draft
-          </Button>
-          {hasLocalDraft ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="min-h-11 w-full touch-manipulation sm:w-auto sm:min-h-9"
-              onClick={() => void restoreOfflineDraft().then((ok) => setMsg(ok ? 'Draft restored' : 'No draft'))}
-            >
-              Restore offline draft
-            </Button>
-          ) : null}
-        </div>
       ) : null}
 
       {isHost && !hostEditMode && items.length === 0 ? (
@@ -524,7 +462,13 @@ export function BillPage() {
             <CardTitle className="text-base">Line items & charges</CardTitle>
           </CardHeader>
           <CardContent>
-            <ItemsEditor draft={editor} onChange={setEditor} onSave={() => void save()} disabled={saving} />
+            <ItemsEditor
+              draft={editor}
+              onChange={setEditor}
+              onSave={() => void save()}
+              disabled={saving}
+              hideSaveButton
+            />
           </CardContent>
         </Card>
       ) : null}
@@ -572,69 +516,107 @@ export function BillPage() {
       ) : null}
 
       {hostFullUi ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-row gap-3">
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 touch-manipulation sm:min-h-9"
+            className="min-h-12 min-w-0 flex-1 touch-manipulation sm:min-h-11"
+            disabled={saving}
             onClick={() => setHostEditMode(false)}
           >
-            Done editing
+            Cancel
           </Button>
-          <span className="text-xs text-muted-foreground">Return to pick-your-order view.</span>
+          <Button
+            type="button"
+            className="min-h-12 min-w-0 flex-1 touch-manipulation sm:min-h-11"
+            disabled={saving || !editor}
+            onClick={() => void save()}
+          >
+            Save
+          </Button>
         </div>
       ) : null}
 
-      <Tabs value={splitTab} onValueChange={(v) => setSplitTab(v as 'assign' | 'results')}>
-        <TabsList className="grid h-auto w-full grid-cols-2 gap-0.5 p-1 sm:inline-flex sm:h-9 sm:w-auto sm:items-center sm:gap-0 sm:p-1">
-          <TabsTrigger
-            value="assign"
-            className="min-h-11 w-full touch-manipulation sm:min-h-0 sm:w-auto sm:py-1"
+      {pickOrderView ? (
+        <Tabs value={splitTab} onValueChange={(v) => setSplitTab(v as 'assign' | 'results')} className="relative">
+          <TabsContent value="assign" className="mt-0 space-y-5 focus-visible:outline-none">
+            {bill.receipt_image_path ? (
+              <div className="overflow-hidden rounded-lg border border-border bg-muted/20">
+                <img
+                  src={billReceiptPublicUrl(bill.receipt_image_path)}
+                  alt="Bill receipt"
+                  className="mx-auto max-h-[min(70vh,560px)] w-full object-contain"
+                />
+              </div>
+            ) : null}
+            {onBill ? (
+              <AssignmentsPanel onOrderConfirmed={() => setSplitTab('results')} />
+            ) : (
+              <p className="text-sm text-muted-foreground">Joining the bill… you can pick your order in a moment.</p>
+            )}
+          </TabsContent>
+          <TabsContent value="results" className="mt-0 focus-visible:outline-none">
+            {onBill ? (
+              <BillResults />
+            ) : (
+              <p className="text-sm text-muted-foreground">Joining the bill… your total will load shortly.</p>
+            )}
+          </TabsContent>
+          <div
+            className="fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-background/95 pb-[env(safe-area-inset-bottom,0px)] pt-1 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur-md dark:shadow-[0_-4px_24px_rgba(0,0,0,0.25)]"
+            role="navigation"
+            aria-label="Bill sections"
           >
-            My order
-          </TabsTrigger>
-          <TabsTrigger
-            value="results"
-            className="min-h-11 w-full touch-manipulation sm:min-h-0 sm:w-auto sm:py-1"
-          >
-            My total
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="assign">
-          {onBill ? (
-            <AssignmentsPanel onOrderConfirmed={() => setSplitTab('results')} />
-          ) : (
-            <p className="text-sm text-muted-foreground">Joining the bill… you can pick your order in a moment.</p>
-          )}
-        </TabsContent>
-        <TabsContent value="results">
-          {onBill ? (
-            <BillResults />
-          ) : (
-            <p className="text-sm text-muted-foreground">Joining the bill… your total will load shortly.</p>
-          )}
-        </TabsContent>
-      </Tabs>
+            <TabsList className="grid h-auto w-full grid-cols-2 gap-0.5 bg-transparent p-2">
+              <TabsTrigger
+                value="assign"
+                className="min-h-12 w-full touch-manipulation rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                Order details
+              </TabsTrigger>
+              <TabsTrigger
+                value="results"
+                className="min-h-12 w-full touch-manipulation rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                My total
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          {showOrderFab ? (
+            <div
+              className="pointer-events-none fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] right-4 z-50 flex flex-col gap-3 md:bottom-8 md:right-6"
+            >
+              <div className="pointer-events-auto flex flex-col gap-3">
+                <BillShareButton
+                  billUrl={billShareUrl}
+                  title={bill.title ?? 'Bill'}
+                  iconOnly
+                  className="size-14 shrink-0 touch-manipulation rounded-full border border-border/80 bg-card text-foreground shadow-lg"
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  className="size-14 shrink-0 touch-manipulation rounded-full shadow-lg"
+                  aria-label="Edit bill"
+                  onClick={() => setHostEditMode(true)}
+                >
+                  <Pencil className="size-5 shrink-0" />
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </Tabs>
+      ) : null}
 
       {hostFullUi ? (
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Button
-            type="button"
-            variant="secondary"
-            className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-h-10"
-            onClick={() => void updateBillMeta({ status: 'closed' })}
-          >
-            Close bill
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-h-10"
-            onClick={() => void handleDeleteBill()}
-          >
-            Delete bill
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="destructive"
+          className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-h-10"
+          onClick={() => void handleDeleteBill()}
+        >
+          Delete bill
+        </Button>
       ) : null}
 
       {msg ? <p className="text-sm text-muted-foreground">{msg}</p> : null}

@@ -393,6 +393,15 @@ export function calculateBill(input: CalculateBillInput): CalculateBillResult {
   }
 }
 
+/** Pre-discount food cents from this line for one viewer (matches full-bill split logic). */
+export function foodSubtotalCentsForViewerOnLine(
+  item: BillItemInput,
+  rows: AssignmentInput[],
+  viewerId: string
+): number {
+  return viewerLineFoodCents(item, rows, viewerId)
+}
+
 function viewerLineFoodCents(item: BillItemInput, rows: AssignmentInput[], viewerId: string): number {
   if (rows.length === 0) return 0
   const gross = lineCents(item)

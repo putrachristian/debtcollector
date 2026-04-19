@@ -77,11 +77,14 @@ export function HomePage() {
   const [newGroupTitle, setNewGroupTitle] = useState('')
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [addToGroupChoice, setAddToGroupChoice] = useState('')
+  /** Bills where the current user is a participant (not necessarily host). */
+  const [participantBillIds, setParticipantBillIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     if (!user) {
       setBills([])
       setGroupMeta(new Map())
+      setParticipantBillIds(new Set())
       return
     }
     setLoading(true)
@@ -117,6 +120,7 @@ export function HomePage() {
       }
       const merged = [...map.values()].sort(sortBillsByCreatedDesc)
       setBills(merged)
+      setParticipantBillIds(new Set(partIds))
 
       const gids = [...new Set(merged.map((b) => b.group_id).filter(Boolean))] as string[]
       if (gids.length > 0) {
@@ -133,6 +137,7 @@ export function HomePage() {
     } catch {
       setBills([])
       setGroupMeta(new Map())
+      setParticipantBillIds(new Set())
     } finally {
       setLoading(false)
     }
@@ -200,11 +205,21 @@ export function HomePage() {
     [filteredClosed, groupMeta]
   )
 
-  /** Your open bills with no trip group — used to add one into a group while editing. */
-  const myHostedOpenUngrouped = useMemo(() => {
+  const canManageBillGroup = useCallback(
+    (b: BillRow) => {
+      if (!user) return false
+      return b.host_id === user.id || participantBillIds.has(b.id)
+    },
+    [user, participantBillIds]
+  )
+
+  /** Open bills you host or participate in, not already in this trip group (or in another group). */
+  function openBillsAddableToGroup(groupId: string): BillRow[] {
     if (!user) return []
-    return bills.filter((b) => b.host_id === user.id && isOpenBill(b) && !b.group_id)
-  }, [bills, user])
+    return bills
+      .filter((b) => canManageBillGroup(b) && isOpenBill(b) && b.group_id !== groupId)
+      .sort(sortBillsByCreatedDesc)
+  }
 
   async function confirmDeleteBill(b: BillRow) {
     if (b.host_id !== user?.id) return
@@ -264,7 +279,10 @@ export function HomePage() {
   async function removeBillFromGroup(billId: string) {
     if (!user) return
     try {
-      const { error } = await supabase.from('bills').update({ group_id: null }).eq('id', billId).eq('host_id', user.id)
+      const { error } = await supabase.rpc('set_bill_group_id', {
+        p_bill_id: billId,
+        p_group_id: null,
+      })
       if (error) throw error
       await load()
     } catch (e) {
@@ -275,7 +293,10 @@ export function HomePage() {
   async function addBillToGroup(billId: string, groupId: string) {
     if (!user) return
     try {
-      const { error } = await supabase.from('bills').update({ group_id: groupId }).eq('id', billId).eq('host_id', user.id)
+      const { error } = await supabase.rpc('set_bill_group_id', {
+        p_bill_id: billId,
+        p_group_id: groupId,
+      })
       if (error) throw error
       setAddToGroupChoice('')
       await load()
@@ -319,12 +340,20 @@ export function HomePage() {
   function billCardRow(
     b: BillRow,
     uid: string,
-    opts?: { showCheckbox?: boolean; checked?: boolean; hideGroupLine?: boolean; inGroupEditMode?: boolean }
+    opts?: {
+      showCheckbox?: boolean
+      checked?: boolean
+      hideGroupLine?: boolean
+      inGroupEditMode?: boolean
+      /** Host or participant can remove a bill from a trip when Edit group is on. */
+      allowRemoveFromGroup?: boolean
+    }
   ) {
     const isHost = b.host_id === uid
     const showGroupingCb = !!opts?.showCheckbox && isHost
     const groupTitle =
       b.group_id && !opts?.hideGroupLine ? groupMeta.get(b.group_id)?.title : null
+    const showActions = !groupingMode && (isHost || (opts?.inGroupEditMode && opts?.allowRemoveFromGroup))
     return (
       <div
         key={b.id}
@@ -362,9 +391,9 @@ export function HomePage() {
             </CardHeader>
           </Card>
         </Link>
-        {isHost && !groupingMode ? (
+        {showActions ? (
           <div className="flex shrink-0 flex-col items-end justify-center gap-1.5 pr-1">
-            {b.group_id && opts?.inGroupEditMode ? (
+            {b.group_id && opts?.inGroupEditMode && opts?.allowRemoveFromGroup ? (
               <Button
                 type="button"
                 variant="outline"
@@ -385,19 +414,21 @@ export function HomePage() {
                 Remove from group
               </Button>
             ) : null}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-11 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              aria-label="Delete bill"
-              onClick={(e) => {
-                e.preventDefault()
-                void confirmDeleteBill(b)
-              }}
-            >
-              <Trash2 className="size-5" />
-            </Button>
+            {isHost ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-11 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                aria-label="Delete bill"
+                onClick={(e) => {
+                  e.preventDefault()
+                  void confirmDeleteBill(b)
+                }}
+              >
+                <Trash2 className="size-5" />
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -425,7 +456,9 @@ export function HomePage() {
           const sec = row
           const meta = groupMeta.get(sec.id)
           const canEditGroup =
-            !!meta && (meta.created_by === uid || sec.bills.some((bill) => bill.host_id === uid))
+            !!meta &&
+            (meta.created_by === uid ||
+              sec.bills.some((bill) => bill.host_id === uid || participantBillIds.has(bill.id)))
           return (
             <details
               key={sec.id}
@@ -454,10 +487,13 @@ export function HomePage() {
                     </Button>
                   ) : null}
                 </div>
-                {editingGroupId === sec.id && canEditGroup && myHostedOpenUngrouped.length > 0 ? (
+                {editingGroupId === sec.id && canEditGroup && openBillsAddableToGroup(sec.id).length > 0 ? (
                   <div className="rounded-md border border-border/80 bg-card/60 p-3 text-sm">
                     <div className="space-y-1">
-                      <Label className="text-xs">Add your open bill</Label>
+                      <Label className="text-xs">Add an existing bill</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Bills you host or are on as a guest; ungrouped or from another trip.
+                      </p>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <select
                           className="h-10 w-full min-w-0 flex-1 rounded-md border border-border bg-card px-2 text-sm"
@@ -465,11 +501,15 @@ export function HomePage() {
                           onChange={(e) => setAddToGroupChoice(e.target.value)}
                         >
                           <option value="">Choose a bill…</option>
-                          {myHostedOpenUngrouped.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.title ?? 'Untitled'}
-                            </option>
-                          ))}
+                          {openBillsAddableToGroup(sec.id).map((b) => {
+                            const fromOther = b.group_id ? groupMeta.get(b.group_id)?.title : null
+                            return (
+                              <option key={b.id} value={b.id}>
+                                {b.title ?? 'Untitled'}
+                                {fromOther ? ` (from ${fromOther})` : ''}
+                              </option>
+                            )
+                          })}
                         </select>
                         <Button
                           type="button"
@@ -491,6 +531,8 @@ export function HomePage() {
                       checked: selectedIds.includes(b.id),
                       hideGroupLine: true,
                       inGroupEditMode: editingGroupId === sec.id && canEditGroup,
+                      allowRemoveFromGroup:
+                        editingGroupId === sec.id && canEditGroup && canManageBillGroup(b),
                     })
                   )}
                 </div>
