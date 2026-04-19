@@ -80,22 +80,26 @@ export function DebtPage() {
           </p>
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1 space-y-1">
+          <div className="space-y-3">
+            <div className="space-y-1">
               <Label htmlFor="my-acct">Bank / e-wallet number</Label>
-              <Input
-                id="my-acct"
-                className="font-mono"
-                value={myAccount}
-                onChange={(e) => setMyAccount(e.target.value)}
-                placeholder="e.g. VA or account number"
-                autoComplete="off"
-              />
+              <div className="flex min-w-0 flex-row items-center gap-2">
+                <Input
+                  id="my-acct"
+                  className="min-h-11 min-w-0 flex-1 font-mono"
+                  value={myAccount}
+                  onChange={(e) => setMyAccount(e.target.value)}
+                  placeholder="e.g. VA or account number"
+                  autoComplete="off"
+                />
+                <div className="shrink-0">
+                  <CopyTextButton text={myAccount} label="Copy my account number" />
+                </div>
+              </div>
             </div>
-            <CopyTextButton text={myAccount} label="Copy my account number" />
             <Button
               type="button"
-              className="min-h-11 shrink-0 touch-manipulation sm:min-h-9"
+              className="min-h-12 w-full touch-manipulation sm:min-h-10"
               disabled={savingAccount}
               onClick={() => void saveMyAccount()}
             >
@@ -111,21 +115,29 @@ export function DebtPage() {
 
       <div className="grid gap-3">
         {rows.map((d) => (
-          <Card key={d.billId}>
-            <CardHeader className="py-4">
+          <Card key={d.billId} className="relative overflow-hidden">
+            <Link
+              to={d.billPath}
+              className="absolute inset-0 z-0 rounded-xl ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`Open bill: ${d.title?.trim() || 'Untitled'}`}
+            />
+            <CardHeader className="relative z-10 py-4 pointer-events-none">
               <CardTitle className="text-base">{d.title?.trim() || 'Untitled bill'}</CardTitle>
               <div className="text-xs text-muted-foreground">
                 <p>
                   Pay <span className="font-medium text-foreground">{d.payToLabel}</span>
                 </p>
                 {d.payToAccountHint ? (
-                  <div className="mt-1 text-foreground/90">
+                  <div
+                    className="relative z-20 mt-1 text-foreground/90 pointer-events-auto"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <CopyableAccountNumber value={d.payToAccountHint} copyLabel="Copy payee account number" />
                   </div>
                 ) : null}
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-0">
+            <CardContent className="relative z-10 space-y-3 pt-0 pointer-events-none">
               <p className="text-2xl font-semibold tabular-nums">{formatCents(d.remainingCents)}</p>
               {d.settledCents > 0 ? (
                 <p className="text-xs text-muted-foreground">
@@ -140,26 +152,23 @@ export function DebtPage() {
                   here (not a transfer to another DebtCollector user).
                 </p>
               ) : null}
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <Button
-                  type="button"
-                  className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-h-10"
-                  disabled={busyId === d.billId}
-                  onClick={() =>
-                    setConfirmPay({
-                      billId: d.billId,
-                      toUserId: d.paymentToUserId,
-                      amountCents: d.remainingCents,
-                    })
-                  }
-                >
-                  {busyId === d.billId ? 'Saving…' : `Confirm paid ${formatCents(d.remainingCents)}`}
-                </Button>
-                <Button variant="outline" className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-h-10" asChild>
-                  <Link to={d.billPath}>Open bill</Link>
-                </Button>
-              </div>
             </CardContent>
+            <div className="relative z-20 px-6 pb-6">
+              <Button
+                type="button"
+                className="min-h-12 w-full touch-manipulation sm:min-h-10"
+                disabled={busyId === d.billId}
+                onClick={() =>
+                  setConfirmPay({
+                    billId: d.billId,
+                    toUserId: d.paymentToUserId,
+                    amountCents: d.remainingCents,
+                  })
+                }
+              >
+                {busyId === d.billId ? 'Saving…' : `Confirm paid ${formatCents(d.remainingCents)}`}
+              </Button>
+            </div>
           </Card>
         ))}
       </div>
