@@ -10,7 +10,8 @@ import {
 import { supabase } from '@/services/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { calculateUserSharePartial } from '@/lib/calculateBill'
-import type { BillRow, BillItemRow, ItemAssignmentRow, ParticipantRow, PaymentRow, Profile } from '@/types'
+import type { BillRow, BillItemRow, ItemAssignmentRow, ParticipantRow, PaymentRow } from '@/types'
+import { hostIsBillPayee } from '@/lib/billPayee'
 import { billPublicPath } from '@/lib/billPath'
 
 export type OutstandingDebt = {
@@ -52,16 +53,6 @@ type DebtContextValue = {
 }
 
 const DebtContext = createContext<DebtContextValue | null>(null)
-
-/** True when the bill’s payee fields match the host’s profile (I’m the payer / you receive transfers). */
-function hostIsBillPayee(b: BillRow, profile: Profile | null, user: { id: string; email?: string | null }): boolean {
-  const dn = profile?.display_name?.trim() || (user.email?.split('@')[0] ?? '') || ''
-  const acct = (profile?.payment_account_number ?? '').trim()
-  const pn = (b.payer_name ?? '').trim()
-  const pa = (b.payer_account_number ?? '').trim()
-  if (!pn && !pa) return true
-  return pn === dn && pa === acct
-}
 
 export function DebtProvider({ children }: { children: ReactNode }) {
   const { user, profile } = useAuth()

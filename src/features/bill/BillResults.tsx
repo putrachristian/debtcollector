@@ -16,10 +16,11 @@ import { Button } from '@/components/ui/button'
 import { CopyableAccountNumber } from '@/components/CopyableAccountNumber'
 import { PaymentConfirmDialog } from '@/components/PaymentConfirmDialog'
 import { foodSubtotalCentsForViewerOnLine, type AssignmentInput } from '@/lib/calculateBill'
+import { hostIsBillPayee } from '@/lib/billPayee'
 import { APP_CURRENCY, formatCents } from '@/lib/money'
 
 export function BillResults() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { bill, items, assignments, calculateResult, calculateMySharePartial, participantLabel } = useBill()
   const { payments, recordBillSharePaid } = useDebt()
   const cur = bill?.currency ?? APP_CURRENCY
@@ -70,36 +71,58 @@ export function BillResults() {
     return rows
   }, [assignments, items, user])
 
-  /** Same settled total as My debt: direct from payments so the row still works when the bill drops off the debt list. */
-  const settledToHostOnBill = useMemo(() => {
-    if (!bill || !user || user.id === bill.host_id) return 0
+  /**
+   * Settled payments toward your share on this bill — same rules as My debt:
+   * guests: from you → host; host paying an external payee: from you → you (ledger).
+   */
+  const settledTowardShare = useMemo(() => {
+    if (!bill || !user) return 0
+    if (user.id !== bill.host_id) {
+      return payments
+        .filter(
+          (p) =>
+            p.bill_id === bill.id &&
+            p.from_user_id === user.id &&
+            p.to_user_id === bill.host_id &&
+            p.status === 'settled'
+        )
+        .reduce((s, p) => s + p.amount_cents, 0)
+    }
     return payments
       .filter(
         (p) =>
           p.bill_id === bill.id &&
           p.from_user_id === user.id &&
-          p.to_user_id === bill.host_id &&
+          p.to_user_id === user.id &&
           p.status === 'settled'
       )
       .reduce((s, p) => s + p.amount_cents, 0)
   }, [bill, user, payments])
 
-  const remainingToHost = useMemo(() => {
-    if (!bill || !user || bill.host_id === user.id) return 0
-    if (!partial?.ok) return 0
-    return Math.max(0, partial.totalCents - settledToHostOnBill)
-  }, [bill, user, partial, settledToHostOnBill])
+  const remainingAfterSettled = useMemo(() => {
+    if (!bill || !user || !partial?.ok) return 0
+    return Math.max(0, partial.totalCents - settledTowardShare)
+  }, [bill, user, partial, settledTowardShare])
+
+  /** Match My debt: confirm only when you still owe (guest → host, or host → external payee via self-ledger). */
+  const showConfirmPaid = useMemo(() => {
+    if (!bill || !user || !partial?.ok || remainingAfterSettled <= 0) return false
+    if (user.id === bill.host_id) {
+      return !hostIsBillPayee(bill, profile ?? null, user)
+    }
+    return true
+  }, [bill, user, partial, remainingAfterSettled, profile])
 
   const handleConfirmPaid = useCallback(async () => {
-    if (!bill || !user || bill.host_id === user.id) return
-    if (remainingToHost <= 0) return
+    if (!bill || !user || remainingAfterSettled <= 0) return
     setMsg(null)
     setBusy(true)
     try {
+      const toUserId = user.id === bill.host_id ? user.id : bill.host_id
       await recordBillSharePaid({
         billId: bill.id,
-        toUserId: bill.host_id,
-        amountCents: remainingToHost,
+        toUserId,
+        amountCents: remainingAfterSettled,
       })
       setMsg('Marked as paid.')
       setShowPaidConfirm(false)
@@ -108,7 +131,7 @@ export function BillResults() {
     } finally {
       setBusy(false)
     }
-  }, [bill, user, remainingToHost, recordBillSharePaid])
+  }, [bill, user, remainingAfterSettled, recordBillSharePaid])
 
   if (!user) {
     return <p className="text-sm text-muted-foreground">Sign in to see your share.</p>
@@ -215,16 +238,18 @@ export function BillResults() {
               <dt className="text-muted-foreground">Tax</dt>
               <dd className="shrink-0 tabular-nums text-foreground">{formatCents(p.taxCents, cur)}</dd>
             </div>
-            {settledToHostOnBill > 0 ? (
+            {settledTowardShare > 0 ? (
               <>
                 <div className="flex items-baseline justify-between gap-6">
                   <dt className="text-muted-foreground">Already marked paid</dt>
-                  <dd className="shrink-0 tabular-nums text-foreground">−{formatCents(settledToHostOnBill, cur)}</dd>
+                  <dd className="shrink-0 tabular-nums text-foreground">−{formatCents(settledTowardShare, cur)}</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-6">
-                  <dt className="font-medium text-foreground">Still to pay host</dt>
+                  <dt className="font-medium text-foreground">
+                    {bill && user.id !== bill.host_id ? 'Still to pay host' : 'Still to pay payee'}
+                  </dt>
                   <dd className="shrink-0 tabular-nums font-semibold text-foreground">
-                    {formatCents(remainingToHost, cur)}
+                    {formatCents(remainingAfterSettled, cur)}
                   </dd>
                 </div>
               </>
@@ -237,16 +262,19 @@ export function BillResults() {
               ))}
             </ul>
           ) : null}
-          {bill && user.id !== bill.host_id && remainingToHost > 0 ? (
+          {bill && showConfirmPaid ? (
             <Button
               type="button"
               className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-h-10"
               disabled={busy}
               onClick={() => setShowPaidConfirm(true)}
             >
-              Confirm paid {formatCents(remainingToHost, cur)}
+              Confirm paid {formatCents(remainingAfterSettled, cur)}
             </Button>
-          ) : bill && user.id !== bill.host_id && remainingToHost === 0 && p.totalCents > 0 ? (
+          ) : bill &&
+            remainingAfterSettled === 0 &&
+            p.totalCents > 0 &&
+            (user.id !== bill.host_id || !hostIsBillPayee(bill, profile ?? null, user)) ? (
             <p className="text-sm font-medium text-emerald-600 dark:text-emerald-500">Paid up on this bill.</p>
           ) : null}
           {msg ? <p className="text-sm text-muted-foreground">{msg}</p> : null}
