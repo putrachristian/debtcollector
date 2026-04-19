@@ -23,7 +23,7 @@ dist-ssr
 secrets/
 **/credentials.json
 **/*-service-account*.json
-supabase/.env
+supabase/*
 .supabase/
 
 # Editor directories and files

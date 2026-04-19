@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronRight, Layers, Trash2 } from 'lucide-react'
+import { ChevronRight, Layers, MoreVertical, Search, Trash2 } from 'lucide-react'
 import { supabase } from '@/services/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useBill } from '@/context/BillContext'
@@ -77,8 +77,25 @@ export function HomePage() {
   const [newGroupTitle, setNewGroupTitle] = useState('')
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [addToGroupChoice, setAddToGroupChoice] = useState('')
+  /** Day filter + search field visibility on Home. */
+  const [showFilterSearch, setShowFilterSearch] = useState(false)
   /** Bills where the current user is a participant (not necessarily host). */
   const [participantBillIds, setParticipantBillIds] = useState<Set<string>>(new Set())
+  /** Bill card overflow menu (three dots). */
+  const [openBillMenuId, setOpenBillMenuId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!openBillMenuId) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpenBillMenuId(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [openBillMenuId])
+
+  useEffect(() => {
+    if (groupingMode) setOpenBillMenuId(null)
+  }, [groupingMode])
 
   const load = useCallback(async () => {
     if (!user) {
@@ -392,42 +409,75 @@ export function HomePage() {
           </Card>
         </Link>
         {showActions ? (
-          <div className="flex shrink-0 flex-col items-end justify-center gap-1.5 pr-1">
-            {b.group_id && opts?.inGroupEditMode && opts?.allowRemoveFromGroup ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 touch-manipulation px-2 text-xs"
-                onClick={(e) => {
-                  e.preventDefault()
-                  if (
-                    !window.confirm(
-                      'Remove this bill from its trip group? You can assign groups again from Home.'
-                    )
-                  ) {
-                    return
-                  }
-                  void removeBillFromGroup(b.id)
-                }}
-              >
-                Remove from group
-              </Button>
-            ) : null}
-            {isHost ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-11 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                aria-label="Delete bill"
-                onClick={(e) => {
-                  e.preventDefault()
-                  void confirmDeleteBill(b)
-                }}
-              >
-                <Trash2 className="size-5" />
-              </Button>
+          <div className="relative flex shrink-0 items-center pr-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-11 touch-manipulation text-muted-foreground hover:text-foreground"
+              aria-label={`Options for ${b.title ?? 'bill'}`}
+              aria-expanded={openBillMenuId === b.id}
+              aria-haspopup="menu"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setOpenBillMenuId((id) => (id === b.id ? null : b.id))
+              }}
+            >
+              <MoreVertical className="size-5" aria-hidden />
+            </Button>
+            {openBillMenuId === b.id ? (
+              <>
+                <div
+                  className="fixed inset-0 z-[60]"
+                  aria-hidden
+                  onClick={() => setOpenBillMenuId(null)}
+                />
+                <ul
+                  role="menu"
+                  className="absolute right-0 top-full z-[70] mt-1 min-w-[12rem] rounded-md border border-border bg-card py-1 shadow-lg"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {b.group_id && opts?.inGroupEditMode && opts?.allowRemoveFromGroup ? (
+                    <li role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full px-3 py-2.5 text-left text-sm touch-manipulation hover:bg-muted/80"
+                        onClick={() => {
+                          setOpenBillMenuId(null)
+                          if (
+                            !window.confirm(
+                              'Remove this bill from its trip group? You can assign groups again from Home.'
+                            )
+                          ) {
+                            return
+                          }
+                          void removeBillFromGroup(b.id)
+                        }}
+                      >
+                        Remove from group
+                      </button>
+                    </li>
+                  ) : null}
+                  {isHost ? (
+                    <li role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-destructive touch-manipulation hover:bg-destructive/10"
+                        onClick={() => {
+                          setOpenBillMenuId(null)
+                          void confirmDeleteBill(b)
+                        }}
+                      >
+                        <Trash2 className="size-4 shrink-0" aria-hidden />
+                        Delete bill
+                      </button>
+                    </li>
+                  ) : null}
+                </ul>
+              </>
             ) : null}
           </div>
         ) : null}
@@ -544,65 +594,88 @@ export function HomePage() {
     )
   }
 
+  const filtersActive = !!filterDate.trim() || !!searchQuery.trim()
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Home</h1>
-
       <PwaInstallPrompt />
-
-      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <div
-          className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto rounded-lg border border-border bg-card/40 px-2 py-1.5 sm:gap-3 sm:px-3"
-          title="Shows bills for this calendar day (bill date if set, otherwise created date). Leave empty to show all."
-        >
-          <span className="shrink-0 text-xs text-muted-foreground">Day</span>
-          <label htmlFor="filter-date" className="sr-only">
-            Filter by date
-          </label>
-          <Input
-            id="filter-date"
-            type="date"
-            className="h-9 w-[min(52vw,11rem)] min-w-[9.25rem] shrink-0 py-1 text-sm sm:w-44"
-            value={filterDate}
-            onChange={(e) => setFilterDate(e.target.value)}
-          />
-          <Button type="button" variant="outline" size="sm" className="h-9 shrink-0 px-2.5 text-xs sm:px-3 sm:text-sm" onClick={() => setFilterDate('')}>
-            Clear
-          </Button>
+      <section className="space-y-3">
+        <div className="flex min-h-10 flex-row flex-wrap items-center justify-between gap-2 gap-y-3">
+          <h2 className="min-w-0 flex-1 text-lg font-semibold tracking-tight">Open bills</h2>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              variant={groupingMode ? 'secondary' : 'outline'}
+              size="sm"
+              className="h-10 touch-manipulation gap-2"
+              onClick={() => {
+                setGroupingMode((v) => !v)
+                setSelectedIds([])
+                setNewGroupTitle('')
+                setEditingGroupId(null)
+              }}
+            >
+              <Layers className="size-4" aria-hidden />
+              {groupingMode ? 'Cancel grouping' : 'Group bills'}
+            </Button>
+            <Button
+              type="button"
+              variant={showFilterSearch ? 'secondary' : 'outline'}
+              size="sm"
+              className={`h-10 touch-manipulation ${filtersActive && !showFilterSearch ? 'ring-2 ring-primary/35' : ''}`}
+              aria-expanded={showFilterSearch}
+              aria-label={showFilterSearch ? 'Hide search and day filter' : 'Show search and day filter'}
+              title={filtersActive ? 'Search or filters active — click to edit' : 'Search and filter by day'}
+              onClick={() => setShowFilterSearch((v) => !v)}
+            >
+              <Search className="size-4" aria-hidden />
+            </Button>
+          </div>
         </div>
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Label htmlFor="home-search" className="sr-only">
-            Search
-          </Label>
-          <Input
-            id="home-search"
-            type="search"
-            placeholder="Search title or group…"
-            className="h-9 min-w-0 flex-1 text-sm"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <Button
-          type="button"
-          variant={groupingMode ? 'secondary' : 'outline'}
-          size="sm"
-          className="h-10 touch-manipulation gap-2"
-          onClick={() => {
-            setGroupingMode((v) => !v)
-            setSelectedIds([])
-            setNewGroupTitle('')
-            setEditingGroupId(null)
-          }}
-        >
-          <Layers className="size-4" aria-hidden />
-          {groupingMode ? 'Cancel grouping' : 'Group bills'}
-        </Button>
+        {showFilterSearch ? (
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <div
+              className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto rounded-lg border border-border bg-card/40 px-2 py-1.5 sm:gap-3 sm:px-3"
+              title="Shows bills for this calendar day (bill date if set, otherwise created date). Leave empty to show all."
+            >
+              <span className="shrink-0 text-xs text-muted-foreground">Day</span>
+              <label htmlFor="filter-date" className="sr-only">
+                Filter by date
+              </label>
+              <Input
+                id="filter-date"
+                type="date"
+                className="h-9 w-[min(52vw,11rem)] min-w-[9.25rem] shrink-0 py-1 text-sm sm:w-44"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 px-2.5 text-xs sm:px-3 sm:text-sm"
+                onClick={() => setFilterDate('')}
+              >
+                Clear
+              </Button>
+            </div>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Label htmlFor="home-search" className="sr-only">
+                Search
+              </Label>
+              <Input
+                id="home-search"
+                type="search"
+                placeholder="Search title or group…"
+                className="h-9 min-w-0 flex-1 text-sm"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+        ) : null}
         {groupingMode ? (
-          <>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <span className="text-xs text-muted-foreground">{selectedIds.length} selected</span>
             <Input
               placeholder="New group name"
@@ -613,16 +686,8 @@ export function HomePage() {
             <Button type="button" size="sm" className="h-10 touch-manipulation" onClick={() => void createGroupFromSelection()}>
               Create group
             </Button>
-          </>
+          </div>
         ) : null}
-      </div>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold tracking-tight">Open bills</h2>
-        <p className="text-sm text-muted-foreground">
-          Every signed-in user sees all <span className="font-medium text-foreground">open</span> bills. Open one to
-          browse; you are added automatically so you can pick your order.
-        </p>
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (

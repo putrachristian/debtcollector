@@ -300,6 +300,9 @@ export function BillPage() {
           <h1 className="truncate text-xl font-semibold leading-tight tracking-tight md:text-2xl">
             {bill.title || 'Untitled'}
           </h1>
+          {bill.bill_date ? (
+            <p className="text-sm text-muted-foreground">{formatIsoDateLabel(bill.bill_date)}</p>
+          ) : null}
         </div>
       </header>
 
@@ -403,25 +406,17 @@ export function BillPage() {
             (create a group, add bills, or remove a bill from a group).
           </p>
         </div>
-      ) : bill.bill_date ? (
-        <Card>
-          <CardHeader className="space-y-0 py-3">
-            <p className="text-sm text-muted-foreground">
-              Bill date: {formatIsoDateLabel(bill.bill_date)}
-            </p>
-          </CardHeader>
-        </Card>
       ) : null}
 
       {joinErr ? <p className="text-sm text-destructive">{joinErr}</p> : null}
 
-      {pickOrderView ? (
+      {/* {pickOrderView ? (
         <p className="text-sm text-muted-foreground">
           {isHost
             ? 'Use Order details to set your units, then My total to see what you owe. Tap the pencil to change line items or close the bill.'
             : 'Only the host can change line items and charges. Use Order details to set your share, then My total for your amount.'}
         </p>
-      ) : null}
+      ) : null} */}
 
       {isHost && !hostEditMode && items.length === 0 ? (
         <p className="text-sm text-amber-600 dark:text-amber-500">
@@ -539,7 +534,7 @@ export function BillPage() {
 
       {pickOrderView ? (
         <Tabs value={splitTab} onValueChange={(v) => setSplitTab(v as 'assign' | 'results')} className="relative">
-          <TabsContent value="assign" className="mt-0 space-y-5 focus-visible:outline-none">
+          <TabsContent value="assign" className="mt-4 space-y-5 focus-visible:outline-none">
             {bill.receipt_image_path ? (
               <div className="overflow-hidden rounded-lg border border-border bg-muted/20">
                 <img
@@ -555,7 +550,7 @@ export function BillPage() {
               <p className="text-sm text-muted-foreground">Joining the bill… you can pick your order in a moment.</p>
             )}
           </TabsContent>
-          <TabsContent value="results" className="mt-0 focus-visible:outline-none">
+          <TabsContent value="results" className="mt-4 focus-visible:outline-none">
             {onBill ? (
               <BillResults />
             ) : (

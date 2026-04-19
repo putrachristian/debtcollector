@@ -187,11 +187,11 @@ export function AssignmentsPanel({ onOrderConfirmed }: Props) {
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-muted-foreground">
+      {/* <p className="text-sm text-muted-foreground">
         Tick <span className="font-medium text-foreground">I had this</span>, set units or slots when needed, and use the
         line <span className="font-medium text-foreground">⋯</span> menu for a <span className="font-medium text-foreground">shared dish</span> (split the line total across several people). Then tap{' '}
         <span className="font-medium text-foreground">Confirm my order</span> at the bottom.
-      </p>
+      </p> */}
 
       {hasPendingChanges ? (
         <p className="text-xs text-amber-600 dark:text-amber-500">You have unsaved picks — confirm at the bottom.</p>

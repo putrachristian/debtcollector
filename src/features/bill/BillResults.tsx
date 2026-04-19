@@ -183,10 +183,6 @@ export function BillResults() {
       <Card className="border-primary/25">
         <CardHeader className="py-4">
           <CardTitle className="text-base">What you owe on this bill</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            From lines you claimed: your food, your share of discount and tax, and an equal split of the service
-            charge.
-          </p>
         </CardHeader>
         <CardContent className="space-y-4 pt-0">
           {myPicks.length > 0 ? (
