@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ArrowUpRight, BanknoteArrowUp, CheckCircle2, WalletCards } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useDebt } from '@/context/DebtContext'
@@ -63,20 +64,39 @@ export function DebtPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">My debt</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Bills where you still owe your share — usually to the host, or to whoever is set as payee when you hosted the
-          bill. Matches <span className="font-medium">My total</span> on each bill.
-        </p>
-      </div>
+      <section className="glass-panel rounded-[1.5rem] px-4 py-4">
+        <div className="glass-inner flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-2xl">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/45 bg-white/45 px-3 py-1 text-xs font-medium text-foreground/85 backdrop-blur-xl dark:border-white/10 dark:bg-white/8">
+              <WalletCards className="size-4 text-primary" aria-hidden />
+              Payments overview
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight">My debt</h1>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              See what still needs to be paid and confirm it quickly after you transfer.
+            </p>
+          </div>
+          <div className="flex gap-2 sm:min-w-[14rem]">
+            <div className="flex-1 rounded-[1.15rem] border border-white/45 bg-white/36 px-3 py-3 backdrop-blur-xl dark:border-white/10 dark:bg-white/6">
+              <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Open</p>
+              <p className="mt-1 text-2xl font-semibold">{rows.length}</p>
+            </div>
+            <div className="flex-1 rounded-[1.15rem] border border-white/45 bg-white/36 px-3 py-3 backdrop-blur-xl dark:border-white/10 dark:bg-white/6">
+              <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Status</p>
+              <p className="mt-1 text-sm font-medium text-foreground/85">
+                {rows.length > 0 ? 'Pending' : 'Clear'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <Card>
         <CardHeader className="py-3">
           <CardTitle className="text-base">My account number</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Used when you host a bill and choose <span className="font-medium text-foreground">I’m the payer</span> — guests
-            see this with your name so they know where to transfer.
+            Used when you host a bill and choose <span className="font-medium text-foreground">I'm the payer</span> so guests
+            know where to transfer.
           </p>
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
@@ -103,14 +123,14 @@ export function DebtPage() {
               disabled={savingAccount}
               onClick={() => void saveMyAccount()}
             >
-              {savingAccount ? 'Saving…' : 'Save'}
+              {savingAccount ? 'Saving...' : 'Save'}
             </Button>
           </div>
           {accountMsg ? <p className="text-sm text-muted-foreground">{accountMsg}</p> : null}
         </CardContent>
       </Card>
 
-      {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading...</p> : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <div className="grid gap-3">
@@ -121,15 +141,28 @@ export function DebtPage() {
               className="absolute inset-0 z-0 rounded-xl ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`Open bill: ${d.title?.trim() || 'Untitled'}`}
             />
-            <CardHeader className="relative z-10 py-4 pointer-events-none">
+            <CardHeader className="pointer-events-none relative z-10 pb-2 pt-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/45 bg-white/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-foreground/70 backdrop-blur-xl dark:border-white/10 dark:bg-white/8">
+                  <BanknoteArrowUp className="size-3.5 text-primary" aria-hidden />
+                  Due now
+                </div>
+                {d.remainingCents === 0 ? (
+                  <div className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle2 className="size-3.5" aria-hidden />
+                    Settled
+                  </div>
+                ) : null}
+              </div>
               <CardTitle className="text-base">{d.title?.trim() || 'Untitled bill'}</CardTitle>
-              <div className="text-xs text-muted-foreground">
-                <p>
+              <div className="mt-1 text-xs text-muted-foreground">
+                <p className="inline-flex items-center gap-1.5">
+                  <ArrowUpRight className="size-3.5 text-primary/80" aria-hidden />
                   Pay <span className="font-medium text-foreground">{d.payToLabel}</span>
                 </p>
                 {d.payToAccountHint ? (
                   <div
-                    className="relative z-20 mt-1 text-foreground/90 pointer-events-auto"
+                    className="pointer-events-auto relative z-20 mt-1 text-foreground/90"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <CopyableAccountNumber value={d.payToAccountHint} copyLabel="Copy payee account number" />
@@ -137,26 +170,25 @@ export function DebtPage() {
                 ) : null}
               </div>
             </CardHeader>
-            <CardContent className="relative z-10 space-y-3 pt-0 pointer-events-none">
-              <p className="text-2xl font-semibold tabular-nums">{formatCents(d.remainingCents)}</p>
+            <CardContent className="pointer-events-none relative z-10 space-y-2 pt-0">
+              <p className="text-[2rem] font-semibold leading-none tabular-nums">{formatCents(d.remainingCents)}</p>
               {d.settledCents > 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Share {formatCents(d.shareTotalCents)} · Already paid {formatCents(d.settledCents)}
+                  Share {formatCents(d.shareTotalCents)} - Already paid {formatCents(d.settledCents)}
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">Your current share on this bill</p>
               )}
               {d.paymentToUserId === user.id ? (
-                <p className="text-xs text-muted-foreground">
-                  Confirm only after you transferred this amount to the payee outside the app. This saves your progress
-                  here (not a transfer to another DebtCollector user).
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Confirm after you transfer to the payee outside the app. This only records progress here.
                 </p>
               ) : null}
             </CardContent>
-            <div className="relative z-20 px-6 pb-6">
+            <div className="relative z-20 px-6 pb-5">
               <Button
                 type="button"
-                className="min-h-12 w-full touch-manipulation sm:min-h-10"
+                className="min-h-11 w-full touch-manipulation sm:min-h-10"
                 disabled={busyId === d.billId}
                 onClick={() =>
                   setConfirmPay({
@@ -166,7 +198,7 @@ export function DebtPage() {
                   })
                 }
               >
-                {busyId === d.billId ? 'Saving…' : `Confirm paid ${formatCents(d.remainingCents)}`}
+                {busyId === d.billId ? 'Saving...' : `Confirm paid ${formatCents(d.remainingCents)}`}
               </Button>
             </div>
           </Card>
@@ -174,7 +206,12 @@ export function DebtPage() {
       </div>
 
       {!loading && rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">You have no unpaid bill balances. Nice.</p>
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="text-base font-medium">You have no unpaid bill balances.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Everything is squared away for now.</p>
+          </CardContent>
+        </Card>
       ) : null}
 
       {msg ? <p className="text-sm text-destructive">{msg}</p> : null}

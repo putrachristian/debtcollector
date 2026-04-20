@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { LayoutList, Moon, Plus, Sun, Wallet } from 'lucide-react'
+import { LayoutList, Moon, Plus, Sparkles, Sun, Wallet } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { Button } from '@/components/ui/button'
@@ -56,13 +56,17 @@ export function AppLayout() {
   const isAuthRoute = pathname === '/auth'
 
   return (
-    <div className="app-shell flex min-h-dvh flex-col bg-background">
-      <header className="sticky top-0 z-40 border-b border-border bg-card/90 pt-[env(safe-area-inset-top,0px)] backdrop-blur-md supports-[backdrop-filter]:bg-card/75">
+    <div className="app-shell relative flex min-h-dvh flex-col overflow-x-clip bg-background">
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[32rem] bg-[radial-gradient(circle_at_top_left,rgba(120,174,255,0.28),transparent_34%),radial-gradient(circle_at_top_right,rgba(255,255,255,0.95),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.06),transparent)] dark:bg-[radial-gradient(circle_at_top_left,rgba(82,138,255,0.22),transparent_34%),radial-gradient(circle_at_top_right,rgba(120,173,255,0.12),transparent_20%),linear-gradient(180deg,rgba(255,255,255,0.03),transparent)]" />
+      <header className="sticky top-0 z-40 border-b border-white/35 bg-white/40 pt-[env(safe-area-inset-top,0px)] backdrop-blur-2xl supports-[backdrop-filter]:bg-white/25 dark:border-white/10 dark:bg-slate-950/40 dark:supports-[backdrop-filter]:bg-slate-950/28">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-4">
           <Link
             to="/"
-            className="min-h-[44px] min-w-[44px] shrink-0 content-center text-lg font-semibold tracking-tight touch-manipulation [-webkit-tap-highlight-color:transparent]"
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center gap-2 text-lg font-semibold tracking-tight touch-manipulation [-webkit-tap-highlight-color:transparent]"
           >
+            <span className="flex size-8 items-center justify-center rounded-2xl bg-primary/14 text-primary shadow-[0_10px_24px_-18px_rgba(37,99,235,0.8)]">
+              <Sparkles className="size-4" aria-hidden />
+            </span>
             DebtCollector
           </Link>
           <nav className="hidden min-w-0 flex-1 items-center justify-end gap-2 md:flex">
@@ -111,13 +115,7 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main
-        className={cn(
-          'mx-auto w-full max-w-4xl flex-1 px-4 pb-6 pt-4',
-          !hideTabBar &&
-            'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-6'
-        )}
-      >
+      <main className={cn('mx-auto w-full max-w-4xl flex-1 px-4 pb-6 pt-5', !hideTabBar && 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-6')}>
         <Outlet />
       </main>
 
@@ -129,7 +127,7 @@ export function AppLayout() {
           <div className="pointer-events-auto mx-auto flex max-w-md justify-center px-4">
             <div
               className={cn(
-                'flex w-full max-w-sm items-end gap-1 rounded-[1.75rem] border border-border/70 bg-card/90 px-2 pb-2 pt-1 shadow-[0_-4px_24px_-4px_rgba(0,0,0,0.12)] backdrop-blur-xl dark:shadow-[0_-4px_28px_-6px_rgba(0,0,0,0.45)]'
+                'flex w-full max-w-sm items-end gap-1 rounded-[1.75rem] border border-white/45 bg-white/45 px-2 pb-2 pt-1 shadow-[0_-10px_36px_-16px_rgba(15,23,42,0.45)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/45 dark:shadow-[0_-8px_28px_-14px_rgba(0,0,0,0.6)]'
               )}
             >
               <NavLink to="/" end className={({ isActive }) => mobileTabClass(isActive)}>

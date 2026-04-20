@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ReceiptText, WandSparkles } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useBill } from '@/context/BillContext'
@@ -61,10 +62,7 @@ export function BillNewPage() {
 
   function payerDetailsForCreate(): { name: string | null; account: string | null } {
     if (iAmPayer) {
-      const dn =
-        profile?.display_name?.trim() ||
-        (user?.email ? user.email.split('@')[0] : null) ||
-        'Host'
+      const dn = profile?.display_name?.trim() || (user?.email ? user.email.split('@')[0] : null) || 'Host'
       const acct = profile?.payment_account_number?.trim() || null
       return { name: dn, account: acct }
     }
@@ -139,12 +137,28 @@ export function BillNewPage() {
 
   return (
     <div className="space-y-5 md:space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">New bill</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Scan a receipt or use Manual to enter lines, then create the bill on the server.
-        </p>
-      </div>
+      <section className="glass-panel rounded-[1.5rem] px-4 py-4">
+        <div className="glass-inner flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-2xl">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/45 bg-white/45 px-3 py-1 text-xs font-medium text-foreground/85 backdrop-blur-xl dark:border-white/10 dark:bg-white/8">
+              <ReceiptText className="size-4 text-primary" aria-hidden />
+              Create bill
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight">Start with a receipt.</h1>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Scan a receipt or switch to Manual, then review the items before saving.
+            </p>
+          </div>
+          <div className="rounded-[1.25rem] border border-white/45 bg-white/36 p-3 backdrop-blur-xl dark:border-white/10 dark:bg-white/6 sm:max-w-xs">
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 items-center justify-center rounded-2xl bg-primary/14 text-primary">
+                <WandSparkles className="size-4.5" aria-hidden />
+              </span>
+              <p className="text-sm text-foreground/85">Scan first, refine later.</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <div className="space-y-2">
         <Label htmlFor="new-title">Title</Label>
@@ -167,7 +181,7 @@ export function BillNewPage() {
             className="min-h-10 touch-manipulation"
             onClick={() => setIAmPayer(true)}
           >
-            I’m the payer
+            I'm the payer
           </Button>
           <Button
             type="button"
@@ -185,7 +199,7 @@ export function BillNewPage() {
             <Link to="/debts" className="font-medium text-primary underline-offset-2 hover:underline">
               My debt
             </Link>
-            . Add your account number there if you haven’t.
+            . Add your account number there if you haven't.
           </p>
         ) : (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -220,38 +234,40 @@ export function BillNewPage() {
       </div>
 
       {showGroupOptions ? (
-        <div className="space-y-2 rounded-lg border border-border bg-muted/20 px-3 py-3">
-          <Label className="text-sm">Trip / group</Label>
-          {groupFromUrl ? (
-            <p className="text-sm">
-              <span className="text-muted-foreground">Adding to </span>
-              <span className="font-medium">{urlGroupTitle ?? '…'}</span>
-            </p>
-          ) : (
-            <>
-              <Input
-                className="min-h-10 text-base md:text-sm"
-                placeholder="e.g. Touring to Puncak"
-                value={tripGroupName}
-                onChange={(e) => setTripGroupName(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Creates a named group on the home list.</p>
-            </>
-          )}
-          {!groupFromUrl ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs"
-              onClick={() => {
-                setShowGroupOptions(false)
-                setTripGroupName('')
-              }}
-            >
-              Hide group options
-            </Button>
-          ) : null}
+        <div className="glass-panel space-y-2 rounded-[1.4rem] px-3 py-3">
+          <div className="glass-inner space-y-2">
+            <Label className="text-sm">Trip / group</Label>
+            {groupFromUrl ? (
+              <p className="text-sm">
+                <span className="text-muted-foreground">Adding to </span>
+                <span className="font-medium">{urlGroupTitle ?? '...'}</span>
+              </p>
+            ) : (
+              <>
+                <Input
+                  className="min-h-10 text-base md:text-sm"
+                  placeholder="e.g. Touring to Puncak"
+                  value={tripGroupName}
+                  onChange={(e) => setTripGroupName(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Creates a named group on the home list.</p>
+              </>
+            )}
+            {!groupFromUrl ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={() => {
+                  setShowGroupOptions(false)
+                  setTripGroupName('')
+                }}
+              >
+                Hide group options
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : (
         <Button
@@ -305,7 +321,7 @@ export function BillNewPage() {
       ) : (
         <p className="text-sm text-muted-foreground">
           {inputTab === 'manual'
-            ? 'Tap “Start manual bill” above to add rows.'
+            ? 'Tap "Start manual bill" above to add rows.'
             : 'Choose Manual to type lines, or upload / photograph a receipt to fill them automatically.'}
         </p>
       )}
