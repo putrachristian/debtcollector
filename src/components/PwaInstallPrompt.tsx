@@ -11,7 +11,7 @@ export function PwaInstallPrompt() {
   if (!canPromptInstall && !showIosHint) return null
 
   return (
-    <Card className="border-primary/20 bg-primary/5">
+    <Card className="overflow-hidden border-primary/20">
       <CardHeader className="py-4">
         <CardTitle className="text-base">Install DebtCollector</CardTitle>
         <p className="text-sm text-muted-foreground">
@@ -29,7 +29,7 @@ export function PwaInstallPrompt() {
           </Button>
         ) : null}
         {showIosHint ? (
-          <div className="flex gap-3 rounded-md border border-border bg-card/80 p-3 text-sm text-muted-foreground">
+          <div className="flex gap-3 rounded-2xl border border-white/50 bg-white/45 p-3 text-sm text-muted-foreground backdrop-blur-xl dark:border-white/10 dark:bg-white/6">
             <Share className="mt-0.5 size-5 shrink-0 text-foreground/70" aria-hidden />
             <p>
               Tap the <span className="font-medium text-foreground">Share</span> menu, then{' '}
